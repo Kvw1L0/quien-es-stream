@@ -113,7 +113,7 @@ export default function TvBroadcastPage() {
     };
   }, []);
 
-  // 60fps local interpolation for ultra-smooth timer bar, drumroll countdown & canvas un-blurring
+  // 60fps local interpolation
   useEffect(() => {
     let rafId;
     function updateLoop() {
@@ -121,7 +121,6 @@ export default function TvBroadcastPage() {
         const snap = syncSnapshotRef.current;
         const delta = performance.now() - snap.syncedAt;
 
-        // Drumroll countdown interpolation
         if (snap.isDrumrolling) {
           const dRem = Math.max(0, snap.drumrollRemainingMs - delta);
           setDrumrollSec(Math.ceil(dRem / 1000));
@@ -153,7 +152,6 @@ export default function TvBroadcastPage() {
           const sec = Math.ceil(remMs / 1000);
           setSmoothRemainingSec(sec);
 
-          // Countdown ticks in last 5 seconds
           if (
             gameState.settings?.soundEnabled &&
             sec > 0 &&
@@ -164,7 +162,6 @@ export default function TvBroadcastPage() {
             soundFX.playTick(sec <= 2);
           }
 
-          // When timer hits 0, play dramatic Time-Up Buzzer once (without revealing!)
           if (
             sec === 0 &&
             gameState.settings?.soundEnabled &&
@@ -185,7 +182,6 @@ export default function TvBroadcastPage() {
     return () => cancelAnimationFrame(rafId);
   }, [gameState?.phase, gameState?.activeRound, gameState?.settings?.soundEnabled]);
 
-  // Trigger confetti & SFX when transitioning to REVEALED or RANKING
   useEffect(() => {
     if (!gameState) return;
     const prev = prevPhaseRef.current;
@@ -225,10 +221,15 @@ export default function TvBroadcastPage() {
   const multiplier = round?.pointsMultiplier || gameState.settings?.pointsMultiplier || 1;
   const reactions = gameState.reactions || [];
 
+  // IMPORTANT: The 4 alternatives & percentages are ONLY displayed on the big TV screen
+  // when the Admin explicitly activates `showAudienceVotes`!
+  // Otherwise, the photo takes center stage in giant format.
+  const showOptionsPanelOnTv = Boolean(round?.showAudienceVotes);
+
   return (
     <main
       onClick={() => soundFX.init()}
-      className={`relative min-h-screen w-screen overflow-hidden flex flex-col items-center justify-start pt-5 md:pt-7 pb-36 select-none ${
+      className={`relative min-h-screen w-screen overflow-hidden flex flex-col items-center justify-start pt-4 md:pt-6 pb-32 select-none ${
         chromaMode === 'TRANSPARENT'
           ? 'bg-transparent'
           : chromaMode === 'GREEN'
@@ -244,7 +245,7 @@ export default function TvBroadcastPage() {
         />
       )}
 
-      {/* FEATURE 7: Live Floating Emoji Reactions Lane (Left side of TV screen) */}
+      {/* Live Floating Emoji Reactions Lane (Left side of TV screen) */}
       <div className="pointer-events-none fixed bottom-28 left-8 z-50 w-56 h-80 overflow-visible">
         {reactions.map((rx) => (
           <div
@@ -324,12 +325,12 @@ export default function TvBroadcastPage() {
 
       {/* ================= PHASE 2 & 3: PLAYING, TIME-UP SUSPENSE & REVEALED ================= */}
       {(phase === 'PLAYING' || phase === 'REVEALED') && round && (
-        <div className="z-10 flex flex-col items-center w-full max-w-6xl px-8">
+        <div className="z-10 flex flex-col items-center w-full max-w-7xl px-6">
           {/* TOP DEDICATED TELEVISION HEADER BANNER (Separated above portrait) */}
-          <div className="w-full flex flex-wrap items-center justify-center gap-4 mb-4 min-h-[74px]">
-            {/* FEATURE 3: x2 / x3 Golden Multiplier Badge */}
+          <div className="w-full flex flex-wrap items-center justify-center gap-4 mb-3 min-h-[70px]">
+            {/* x2 / x3 Golden Multiplier Badge */}
             {multiplier > 1 && (
-              <div className="flex items-center gap-2 px-5 py-2.5 rounded-3xl bg-gradient-to-r from-[#e5a93c] via-[#ff5500] to-[#e5a93c] border-4 border-white text-white shadow-xl animate-bounce">
+              <div className="flex items-center gap-2 px-5 py-2 rounded-3xl bg-gradient-to-r from-[#e5a93c] via-[#ff5500] to-[#e5a93c] border-4 border-white text-white shadow-xl animate-bounce">
                 <Sparkles className="w-6 h-6 fill-white" />
                 <span className="font-display text-3xl md:text-4xl font-black uppercase tracking-wider">
                   ¡RONDA PUNTOS x{multiplier}!
@@ -338,13 +339,13 @@ export default function TvBroadcastPage() {
             )}
 
             {phase === 'PLAYING' && !isTimeUp && !isDrumrolling && (
-              <div className="flex items-center gap-5 px-8 py-2.5 rounded-3xl bg-white/95 border-4 border-[#008296] shadow-[0_12px_35px_rgba(0,85,102,0.18)]">
+              <div className="flex items-center gap-5 px-8 py-2 rounded-3xl bg-white/95 border-4 border-[#008296] shadow-[0_12px_35px_rgba(0,85,102,0.18)]">
                 <span className="font-display text-3xl md:text-4xl font-black uppercase tracking-wider text-[#005566]">
                   ¿QUIÉN ES?
                 </span>
                 <div className="h-8 w-0.5 bg-[#008296]/25" />
                 <div
-                  className={`font-display text-4xl md:text-5xl font-black px-5 py-1 rounded-2xl transition-colors ${
+                  className={`font-display text-4xl md:text-5xl font-black px-5 py-0.5 rounded-2xl transition-colors ${
                     smoothRemainingSec <= 5
                       ? 'bg-[#ff5500] text-white animate-bounce'
                       : 'bg-[#008296] text-white'
@@ -355,9 +356,9 @@ export default function TvBroadcastPage() {
               </div>
             )}
 
-            {/* FEATURE 6: 3-2-1 Drumroll Climax Banner */}
+            {/* 3-2-1 Drumroll Climax Banner */}
             {isDrumrolling && (
-              <div className="flex items-center gap-4 px-10 py-3 rounded-3xl bg-[#005566] border-4 border-[#e5a93c] text-white shadow-2xl animate-drumroll">
+              <div className="flex items-center gap-4 px-10 py-2.5 rounded-3xl bg-[#005566] border-4 border-[#e5a93c] text-white shadow-2xl animate-drumroll">
                 <span className="font-display text-4xl md:text-5xl font-black uppercase tracking-wider text-[#e5a93c]">
                   REVELANDO EN {drumrollSec}...
                 </span>
@@ -366,7 +367,7 @@ export default function TvBroadcastPage() {
 
             {/* SUSPENSE STATE: Timer reached 0, waiting for Admin */}
             {phase === 'PLAYING' && isTimeUp && !isDrumrolling && (
-              <div className="flex items-center gap-4 px-9 py-3 rounded-3xl bg-gradient-to-r from-[#ff5500] via-[#e59a24] to-[#ff5500] border-4 border-white text-white shadow-2xl animate-tension-glow">
+              <div className="flex items-center gap-4 px-9 py-2.5 rounded-3xl bg-gradient-to-r from-[#ff5500] via-[#e59a24] to-[#ff5500] border-4 border-white text-white shadow-2xl animate-tension-glow">
                 <Lock className="w-8 h-8 stroke-[2.5]" />
                 <span className="font-display text-4xl md:text-5xl font-black uppercase tracking-wider">
                   ¡TIEMPO CUMPLIDO! ¿QUIÉN ES?
@@ -374,20 +375,20 @@ export default function TvBroadcastPage() {
               </div>
             )}
 
-            {/* REVEALED STATE: Admin released the answer + FEATURE 1: Speed Winner Spotlight */}
+            {/* REVEALED STATE: Admin released the answer + Speed Winner Spotlight */}
             {phase === 'REVEALED' && (
               <div className="flex flex-wrap items-center justify-center gap-4">
-                <div className="flex items-center gap-4 px-9 py-3 rounded-3xl bg-gradient-to-r from-[#008296] via-[#006b7d] to-[#008296] border-4 border-[#e5a93c] text-white shadow-[0_15px_45px_rgba(0,85,102,0.35)] animate-float">
+                <div className="flex items-center gap-4 px-9 py-2.5 rounded-3xl bg-gradient-to-r from-[#008296] via-[#006b7d] to-[#008296] border-4 border-[#e5a93c] text-white shadow-[0_15px_45px_rgba(0,85,102,0.35)] animate-float">
                   <CheckCircle2 className="w-9 h-9 text-[#84bd00] shrink-0 stroke-[2.5]" />
                   <span className="font-display text-4xl md:text-6xl font-black uppercase tracking-wide">
                     {round.correctName}
                   </span>
                 </div>
 
-                {/* FEATURE 1: Fastest Correct Player Spotlight Card */}
+                {/* Fastest Correct Player Spotlight Card */}
                 {round.fastestWinner && (
-                  <div className="flex items-center gap-3.5 px-6 py-3 rounded-3xl bg-white/95 border-4 border-[#e5a93c] shadow-[0_15px_40px_rgba(229,169,60,0.4)] animate-slide-up">
-                    <div className="w-11 h-11 rounded-2xl bg-[#e5a93c] flex items-center justify-center text-[#003d4a] shadow">
+                  <div className="flex items-center gap-3.5 px-6 py-2.5 rounded-3xl bg-white/95 border-4 border-[#e5a93c] shadow-[0_15px_40px_rgba(229,169,60,0.4)] animate-slide-up">
+                    <div className="w-10 h-10 rounded-2xl bg-[#e5a93c] flex items-center justify-center text-[#003d4a] shadow">
                       <Zap className="w-6 h-6 fill-current" />
                     </div>
                     <div className="text-left">
@@ -407,24 +408,30 @@ export default function TvBroadcastPage() {
             )}
           </div>
 
-          {/* MAIN TELEVISION STAGE: Left = Portrait Frame, Right = 4 Broadcast Option Bars */}
-          <div className="w-full flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-12">
-            {/* Portrait Frame */}
-            <div className="relative flex flex-col items-center shrink-0">
+          {/* MAIN TELEVISION STAGE:
+              - When `showOptionsPanelOnTv` is FALSE (default): Giant centered portrait occupying maximum screen height!
+              - When `showOptionsPanelOnTv` is TRUE (activated by Admin): Portrait shifts left & live percentage bars slide in on the right! */}
+          <div className="w-full flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-12 transition-all duration-500">
+            {/* Portrait Frame Container */}
+            <div className="relative flex flex-col items-center shrink-0 transition-all duration-500">
               <div
-                className={`relative w-[350px] h-[350px] md:w-[400px] md:h-[400px] rounded-[2.2rem] overflow-hidden bg-white p-2.5 shadow-[0_20px_55px_rgba(0,85,102,0.28)] border-4 transition-all duration-500 ${
+                className={`relative rounded-[2.5rem] overflow-hidden bg-white p-3 shadow-[0_24px_70px_rgba(0,85,102,0.34)] border-4 transition-all duration-500 ${
+                  showOptionsPanelOnTv
+                    ? 'w-[360px] h-[360px] md:w-[410px] md:h-[410px]'
+                    : 'w-[440px] h-[440px] md:w-[530px] md:h-[530px] xl:w-[560px] xl:h-[560px]'
+                } ${
                   isDrumrolling
                     ? 'border-[#e5a93c] animate-drumroll'
                     : phase === 'REVEALED'
-                    ? 'border-[#84bd00] scale-[1.02]'
+                    ? 'border-[#84bd00] scale-[1.01]'
                     : multiplier > 1
-                    ? 'border-[#e5a93c] shadow-[0_0_45px_rgba(229,169,60,0.55)]'
+                    ? 'border-[#e5a93c] shadow-[0_0_50px_rgba(229,169,60,0.6)]'
                     : isTimeUp
                     ? 'border-[#ff5500] animate-tension-glow'
                     : 'border-[#008296]'
                 }`}
               >
-                <div className="relative w-full h-full rounded-[1.6rem] overflow-hidden bg-[#003d4a]">
+                <div className="relative w-full h-full rounded-[1.8rem] overflow-hidden bg-[#003d4a]">
                   <DistortedCanvas
                     imageSrc={round.imageData}
                     progress={smoothProgress}
@@ -444,7 +451,7 @@ export default function TvBroadcastPage() {
 
                   {/* Sleek bottom progress bar inside frame */}
                   {phase === 'PLAYING' && !isTimeUp && (
-                    <div className="absolute bottom-0 left-0 right-0 h-3 bg-black/40 backdrop-blur-sm">
+                    <div className="absolute bottom-0 left-0 right-0 h-3.5 bg-black/45 backdrop-blur-sm">
                       <div
                         className={`h-full transition-none ${
                           smoothRemainingSec <= 5
@@ -460,9 +467,32 @@ export default function TvBroadcastPage() {
                 </div>
               </div>
 
-              {/* FEATURE 4: Lower-Third TV Hint Banner (Zócalo de Pista) */}
+              {/* Subtle Live Responders Pill Strip under the Giant Portrait when options panel is hidden */}
+              {!showOptionsPanelOnTv && phase === 'PLAYING' && (
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                  <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#005566] text-white font-extrabold text-xs uppercase tracking-wider shadow-md">
+                    <Users className="w-4 h-4 text-[#00b4cc]" />
+                    <span>{round.totalVotes || 0} VOTOS RECIBIDOS</span>
+                  </div>
+
+                  {round.recentResponders?.slice(0, 3).map((resp) => (
+                    <div
+                      key={resp.id}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/95 border border-[#008296]/30 text-[#005566] text-xs font-extrabold shadow-sm animate-slide-up"
+                    >
+                      <Zap className="w-3.5 h-3.5 text-[#e59a24] fill-[#e59a24]" />
+                      <span className="truncate max-w-[100px]">{resp.name}</span>
+                      <span className="text-[#008296] font-black">
+                        {(resp.elapsedMs / 1000).toFixed(1)}s
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Lower-Third TV Hint Banner (Zócalo de Pista) */}
               {round.showHintOnTv && round.hintText && (
-                <div className="mt-3.5 max-w-[420px] w-full bg-[#005566] border-l-8 border-[#e5a93c] text-white px-5 py-2.5 rounded-2xl shadow-xl flex items-center gap-3 animate-slide-up">
+                <div className="mt-3 max-w-[520px] w-full bg-[#005566] border-l-8 border-[#e5a93c] text-white px-5 py-2.5 rounded-2xl shadow-xl flex items-center gap-3 animate-slide-up">
                   <Lightbulb className="w-6 h-6 text-[#e5a93c] shrink-0 fill-[#e5a93c]/20" />
                   <div className="text-left">
                     <span className="block text-[10px] font-extrabold uppercase tracking-widest text-[#e5a93c]">
@@ -476,94 +506,90 @@ export default function TvBroadcastPage() {
               )}
             </div>
 
-            {/* Right Column: 4 Television Broadcast Option Cards + Live Responder Toasts */}
-            <div className="flex flex-col gap-3 w-full max-w-xl">
-              {/* Top bar: Vote Counter + FEATURE 2: Live Responder Toasts */}
-              <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#005566] text-white font-extrabold text-xs uppercase tracking-wider shadow">
-                  <Users className="w-4 h-4 text-[#00b4cc]" />
-                  <span>{round.totalVotes || 0} RESPUESTAS EN VIVO</span>
+            {/* Right Column: 4 Television Broadcast Option Cards + Live Vote Bars
+                ONLY RENDERED WHEN ADMIN ACTIVATES `showAudienceVotes`! */}
+            {showOptionsPanelOnTv && (
+              <div className="flex flex-col gap-3 w-full max-w-xl animate-slide-up">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                  <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#005566] text-white font-extrabold text-xs uppercase tracking-wider shadow">
+                    <Users className="w-4 h-4 text-[#00b4cc]" />
+                    <span>{round.totalVotes || 0} RESPUESTAS EN VIVO</span>
+                  </div>
+
+                  {phase === 'PLAYING' && round.recentResponders?.length > 0 && (
+                    <div className="flex items-center gap-1.5 overflow-hidden">
+                      {round.recentResponders.slice(0, 2).map((resp) => (
+                        <div
+                          key={resp.id}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/95 border border-[#008296]/30 text-[#005566] text-xs font-extrabold shadow-sm animate-slide-up"
+                        >
+                          <Zap className="w-3.5 h-3.5 text-[#e59a24] fill-[#e59a24]" />
+                          <span className="truncate max-w-[95px]">{resp.name}</span>
+                          <span className="text-[#008296] font-black">
+                            {(resp.elapsedMs / 1000).toFixed(1)}s
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {/* FEATURE 2: Recent responder pills (without spoiling their choice) */}
-                {phase === 'PLAYING' && round.recentResponders?.length > 0 && (
-                  <div className="flex items-center gap-1.5 overflow-hidden">
-                    {round.recentResponders.slice(0, 2).map((resp) => (
-                      <div
-                        key={resp.id}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/95 border border-[#008296]/30 text-[#005566] text-xs font-extrabold shadow-sm animate-slide-up"
-                      >
-                        <Zap className="w-3.5 h-3.5 text-[#e59a24] fill-[#e59a24]" />
-                        <span className="truncate max-w-[95px]">{resp.name}</span>
-                        <span className="text-[#008296] font-black">
-                          {(resp.elapsedMs / 1000).toFixed(1)}s
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                {round.options?.map((optionText, idx) => {
+                  const style = OPTION_STYLES[idx % 4];
+                  const isCorrect =
+                    phase === 'REVEALED' && round.correctOptionIndex === idx;
+                  const isWrong =
+                    phase === 'REVEALED' && round.correctOptionIndex !== idx;
 
-              {round.options?.map((optionText, idx) => {
-                const style = OPTION_STYLES[idx % 4];
-                const isCorrect =
-                  phase === 'REVEALED' && round.correctOptionIndex === idx;
-                const isWrong =
-                  phase === 'REVEALED' && round.correctOptionIndex !== idx;
-
-                const showVotes =
-                  phase === 'REVEALED' || Boolean(round.showAudienceVotes);
-                const votesForOption = round.voteCounts
-                  ? round.voteCounts[idx] || 0
-                  : 0;
-                const votePercent =
-                  showVotes && round.totalVotes > 0
-                    ? Math.round((votesForOption / round.totalVotes) * 100)
+                  const votesForOption = round.voteCounts
+                    ? round.voteCounts[idx] || 0
                     : 0;
+                  const votePercent =
+                    round.totalVotes > 0
+                      ? Math.round((votesForOption / round.totalVotes) * 100)
+                      : 0;
 
-                return (
-                  <div
-                    key={idx}
-                    className={`relative overflow-hidden rounded-2xl border-3 p-4 transition-all duration-500 ${
-                      isCorrect
-                        ? 'bg-[#005566] border-4 border-[#84bd00] scale-[1.03] shadow-[0_12px_35px_rgba(132,189,0,0.45)] text-white'
-                        : isWrong
-                        ? 'bg-white/60 border-slate-300/60 opacity-50 scale-[0.98] text-[#005566]'
-                        : `bg-white/95 border-2 ${style.border} shadow-[0_8px_25px_rgba(0,85,102,0.12)] text-[#005566]`
-                    }`}
-                  >
-                    {showVotes && (
+                  return (
+                    <div
+                      key={idx}
+                      className={`relative overflow-hidden rounded-2xl border-3 p-4 transition-all duration-500 ${
+                        isCorrect
+                          ? 'bg-[#005566] border-4 border-[#84bd00] scale-[1.03] shadow-[0_12px_35px_rgba(132,189,0,0.45)] text-white'
+                          : isWrong
+                          ? 'bg-white/60 border-slate-300/60 opacity-50 scale-[0.98] text-[#005566]'
+                          : `bg-white/95 border-2 ${style.border} shadow-[0_8px_25px_rgba(0,85,102,0.12)] text-[#005566]`
+                      }`}
+                    >
+                      {/* Live Percentage fill bar */}
                       <div
-                        className={`absolute inset-y-0 left-0 transition-all duration-1000 ${
+                        className={`absolute inset-y-0 left-0 transition-all duration-700 ${
                           isCorrect
-                            ? 'bg-[#84bd00]/30'
-                            : `${style.barFill} opacity-15`
+                            ? 'bg-[#84bd00]/35'
+                            : `${style.barFill} opacity-20`
                         }`}
                         style={{ width: `${votePercent}%` }}
                       />
-                    )}
 
-                    <div className="relative z-10 flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-4 min-w-0">
-                        <div
-                          className={`w-12 h-12 rounded-xl ${
-                            isCorrect
-                              ? 'bg-[#84bd00] text-[#003d4a]'
-                              : `${style.badgeBg} text-white`
-                          } flex items-center justify-center font-display font-black text-3xl shadow-md shrink-0`}
-                        >
-                          {style.label}
+                      <div className="relative z-10 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-4 min-w-0">
+                          <div
+                            className={`w-12 h-12 rounded-xl ${
+                              isCorrect
+                                ? 'bg-[#84bd00] text-[#003d4a]'
+                                : `${style.badgeBg} text-white`
+                            } flex items-center justify-center font-display font-black text-3xl shadow-md shrink-0`}
+                          >
+                            {style.label}
+                          </div>
+                          <span
+                            className={`font-display font-extrabold text-3xl md:text-4xl uppercase tracking-wide truncate ${
+                              isCorrect ? 'text-white' : 'text-[#005566]'
+                            }`}
+                          >
+                            {optionText}
+                          </span>
                         </div>
-                        <span
-                          className={`font-display font-extrabold text-3xl md:text-4xl uppercase tracking-wide truncate ${
-                            isCorrect ? 'text-white' : 'text-[#005566]'
-                          }`}
-                        >
-                          {optionText}
-                        </span>
-                      </div>
 
-                      {showVotes && (
                         <div className="flex items-center gap-2.5 shrink-0">
                           <span
                             className={`font-display font-black text-3xl ${
@@ -576,12 +602,12 @@ export default function TvBroadcastPage() {
                             <CheckCircle2 className="w-8 h-8 text-[#84bd00]" />
                           )}
                         </div>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}

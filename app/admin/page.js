@@ -422,21 +422,20 @@ export default function AdminDashboardPage() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    {phase === 'PLAYING' && (
-                      <button
-                        onClick={() => sendAction('TOGGLE_AUDIENCE_VOTES')}
-                        className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-black text-xs border transition ${
-                          round.showAudienceVotes
-                            ? 'bg-[#00b4cc] text-[#002b36] border-white'
-                            : 'bg-[#0b2b36] text-[#00b4cc] border-[#00b4cc]/40 hover:bg-[#00b4cc]/20'
-                        }`}
-                      >
-                        <BarChart3 className="w-4 h-4" />
-                        {round.showAudienceVotes
-                          ? 'OCULTAR % PÚBLICO'
-                          : 'MOSTRAR % PÚBLICO'}
-                      </button>
-                    )}
+                    <button
+                      onClick={() => sendAction('TOGGLE_AUDIENCE_VOTES')}
+                      className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl font-black text-xs border-2 transition ${
+                        round.showAudienceVotes
+                          ? 'bg-[#00b4cc] text-[#002b36] border-white shadow-[0_0_20px_rgba(0,180,204,0.5)]'
+                          : 'bg-[#0b2b36] text-[#00b4cc] border-[#00b4cc]/50 hover:bg-[#00b4cc]/20'
+                      }`}
+                      title="Activa o desactiva en la pantalla gigante las 4 alternativas y el avance de sus porcentajes"
+                    >
+                      <BarChart3 className="w-4 h-4" />
+                      {round.showAudienceVotes
+                        ? 'OCULTAR ALTERNATIVAS Y % EN TV'
+                        : 'MOSTRAR ALTERNATIVAS Y % EN TV'}
+                    </button>
 
                     {phase === 'PLAYING' && !isTimeUp && (
                       <button

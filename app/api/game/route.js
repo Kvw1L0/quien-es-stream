@@ -94,10 +94,8 @@ function buildClientPayload(state, role, playerId) {
     }
   }
 
-  // Sort recent responders newest first for live TV toast feed
   roundResponders.sort((a, b) => b.answeredAt - a.answeredAt);
 
-  // Recent emoji reactions (last 6 seconds)
   const recentReactions = (state.reactions || []).filter(
     (r) => now - r.createdAt < 6000
   );
@@ -106,6 +104,8 @@ function buildClientPayload(state, role, playerId) {
     currentPhase === 'PLAYING' && state.activeRound?.drumrollStartedAt
       ? Math.max(0, 3000 - (now - state.activeRound.drumrollStartedAt))
       : 0;
+
+  const showOptionsOnTv = Boolean(state.activeRound?.showAudienceVotes);
 
   const basePayload = {
     version: state.version,
@@ -146,19 +146,16 @@ function buildClientPayload(state, role, playerId) {
           remainingMs: isRevealed ? 0 : roundStatus.remainingMs,
           elapsedMs: roundStatus.elapsedMs,
           isTimeUp,
-          // Drumroll 3..2..1 state
           isDrumrolling: drumrollRemainingMs > 0,
           drumrollRemainingMs,
-          // Lower-third Hint
           hintText: state.activeRound.hintText || activePhoto?.hint || '',
           showHintOnTv: Boolean(state.activeRound.showHintOnTv),
-          // Live responders toast feed (does not reveal which option they picked)
           recentResponders: roundResponders.slice(0, 5),
-          // Speed Winner Spotlight (only sent when revealed or to admin)
           fastestWinner: isRevealed || role === 'admin' ? fastestCorrect : null,
-          showAudienceVotes: Boolean(state.activeRound.showAudienceVotes),
+          // Controls whether the TV displays the 4 alternatives & live percentages alongside the giant photo
+          showAudienceVotes: showOptionsOnTv,
           voteCounts:
-            isRevealed || role === 'admin' || state.activeRound.showAudienceVotes
+            isRevealed || role === 'admin' || showOptionsOnTv
               ? voteCounts
               : null,
           totalVotes,
@@ -310,7 +307,7 @@ export async function POST(request) {
           playerName: player ? player.name : 'Espectador',
           avatarColor: player ? player.avatarColor : '#008296',
           createdAt: now,
-          offsetLeft: Math.floor(15 + Math.random() * 70), // % horizontal spread inside reaction lane
+          offsetLeft: Math.floor(15 + Math.random() * 70),
         });
         await saveGameState(state);
         break;
@@ -389,6 +386,7 @@ export async function POST(request) {
         const mult = Number(pointsMultiplier || state.settings.pointsMultiplier || 1);
         const { options, correctOptionIndex } = generateOptionsForPhoto(targetPhoto, state.photos);
 
+        // Always start every round with showAudienceVotes: false so ONLY the giant photo appears on TV!
         state.activeRound = {
           roundId: `round-${now}`,
           photoId: targetPhoto.id,
@@ -432,7 +430,6 @@ export async function POST(request) {
       }
 
       case 'SET_MANUAL_PROGRESS': {
-        // Allows the Director to manually scrub clarity from 0% to 100% live!
         const { progress } = body;
         if (state.activeRound) {
           if (progress === null || typeof progress === 'undefined') {
@@ -472,6 +469,7 @@ export async function POST(request) {
       }
 
       case 'TOGGLE_AUDIENCE_VOTES': {
+        // Toggles showing the 4 alternatives + live percentages on the big TV screen!
         if (state.activeRound) {
           state.activeRound.showAudienceVotes = !state.activeRound.showAudienceVotes;
           await saveGameState(state);
@@ -480,7 +478,6 @@ export async function POST(request) {
       }
 
       case 'START_DRUMROLL_REVEAL': {
-        // Starts a 3-second dramatic drumroll countdown on TV & phones before automatically transitioning to REVEALED
         if (state.activeRound && state.phase === 'PLAYING') {
           state.activeRound.drumrollStartedAt = now;
           await saveGameState(state);
