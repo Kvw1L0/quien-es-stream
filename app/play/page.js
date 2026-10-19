@@ -517,11 +517,13 @@ export default function MobilePlayerPage() {
             </div>
           )}
 
-          {/* 1) PLAYING & Timer Running -> 4 Option Buttons optimized for iOS Safari touch */}
+          {/* 1) PLAYING & Timer Running -> 4 Option Buttons with clear highlight on the selected option */}
           {phase === 'PLAYING' && !isTimeUp && (
             <div className="grid grid-cols-1 gap-2.5 w-full mt-1 relative z-30">
               {round.options?.map((optionText, idx) => {
                 const style = OPTION_STYLES[idx % 4];
+                const isSelected = myCurrentRoundAnswer?.optionIndex === idx;
+                const hasSelection = typeof myCurrentRoundAnswer?.optionIndex === 'number';
                 return (
                   <button
                     key={idx}
@@ -531,14 +533,32 @@ export default function MobilePlayerPage() {
                       handleSelectOption(idx);
                     }}
                     onClick={() => handleSelectOption(idx)}
-                    className={`w-full flex items-center gap-3 p-3.5 rounded-2xl ${style.bg} border-b-4 ${style.border} text-left shadow-lg transition-transform touch-manipulation cursor-pointer select-none`}
+                    className={`w-full flex items-center justify-between gap-3 p-3.5 rounded-2xl ${style.bg} text-left transition-all touch-manipulation cursor-pointer select-none ${
+                      isSelected
+                        ? 'ring-4 ring-white border-4 border-white scale-[1.03] shadow-[0_0_25px_rgba(255,255,255,0.7)] z-10'
+                        : hasSelection
+                        ? `border-b-4 ${style.border} opacity-65 scale-[0.98]`
+                        : `border-b-4 ${style.border} shadow-lg`
+                    }`}
                   >
-                    <span className="w-8 h-8 rounded-xl bg-black/20 flex items-center justify-center font-display font-black text-xl text-white shrink-0 pointer-events-none">
-                      {style.label}
-                    </span>
-                    <span className="font-display font-black text-white text-2xl uppercase tracking-wide leading-tight pointer-events-none">
-                      {optionText}
-                    </span>
+                    <div className="flex items-center gap-3 min-w-0 pointer-events-none">
+                      <span
+                        className={`w-8 h-8 rounded-xl flex items-center justify-center font-display font-black text-xl shrink-0 ${
+                          isSelected
+                            ? 'bg-white text-[#005566]'
+                            : 'bg-black/20 text-white'
+                        }`}
+                      >
+                        {style.label}
+                      </span>
+                      <span className="font-display font-black text-white text-2xl uppercase tracking-wide leading-tight truncate">
+                        {optionText}
+                      </span>
+                    </div>
+
+                    {isSelected && (
+                      <CheckCircle2 className="w-7 h-7 text-white shrink-0 pointer-events-none" />
+                    )}
                   </button>
                 );
               })}
