@@ -8,9 +8,6 @@ export default function HomePage() {
       style={{ backgroundImage: "url('/key-visual-bg.jpg')" }}
     >
       <div className="max-w-4xl w-full text-center mb-12">
-        <span className="inline-block px-5 py-1.5 rounded-full bg-[#008296] text-white font-extrabold text-xs uppercase tracking-widest mb-4 shadow">
-          SHOW EN VIVO
-        </span>
         <h1 className="font-display text-6xl md:text-7xl font-black text-[#005566] uppercase tracking-wide mb-10 drop-shadow-sm">
           ¿QUIÉN ES EL PERSONAJE?
         </h1>
@@ -27,7 +24,7 @@ export default function HomePage() {
               Pantalla TV / OBS
             </h2>
             <p className="text-xs text-[#005566]/80 font-bold">
-              Vista televisiva oficial para proyectar en el streaming.
+              Vista televisiva oficial para proyectar en la pantalla gigante.
             </p>
           </Link>
 
@@ -42,7 +39,7 @@ export default function HomePage() {
               Pantalla Jugador
             </h2>
             <p className="text-xs text-[#005566]/80 font-bold">
-              Vista móvil para quienes escanean el código QR en vivo.
+              Vista móvil para quienes escanean el código QR.
             </p>
           </Link>
 
@@ -57,7 +54,7 @@ export default function HomePage() {
               Panel Director
             </h2>
             <p className="text-xs text-[#005566]/80 font-bold">
-              Carga fotos en lote, revela manualmente la respuesta y controla el show.
+              Carga fotos en lote, revela manualmente la respuesta y controla la partida.
             </p>
           </Link>
         </div>

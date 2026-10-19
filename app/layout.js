@@ -14,8 +14,8 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata = {
-  title: '¿Quién Es? — Juego en Vivo',
-  description: 'Juego televisivo interactivo en tiempo real con código QR',
+  title: '¿Quién Es?',
+  description: 'Juego televisivo interactivo con código QR',
 };
 
 export default function RootLayout({ children }) {

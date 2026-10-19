@@ -9,6 +9,19 @@ import {
 } from 'lucide-react';
 import DistortedCanvas from '@/components/DistortedCanvas';
 
+const FAMOUS_EMOJIS = [
+  '😎',
+  '🔥',
+  '🤩',
+  '😂',
+  '🚀',
+  '👑',
+  '🦄',
+  '⚡',
+  '🎉',
+  '❤️',
+];
+
 const AVATAR_COLORS = [
   '#008296',
   '#e59a24',
@@ -46,6 +59,7 @@ const REACTION_EMOJIS = ['🔥', '😂', '🤯', '👏', '❤️', '🎉'];
 export default function MobilePlayerPage() {
   const [playerId, setPlayerId] = useState(null);
   const [nickname, setNickname] = useState('');
+  const [selectedEmoji, setSelectedEmoji] = useState(FAMOUS_EMOJIS[0]);
   const [selectedColor, setSelectedColor] = useState(AVATAR_COLORS[0]);
   const [isJoined, setIsJoined] = useState(false);
   const [joining, setJoining] = useState(false);
@@ -55,7 +69,6 @@ export default function MobilePlayerPage() {
   const [smoothProgress, setSmoothProgress] = useState(0);
   const [smoothRemainingSec, setSmoothRemainingSec] = useState(0);
   const [drumrollSec, setDrumrollSec] = useState(0);
-  const [justSubmittedFlash, setJustSubmittedFlash] = useState(false);
 
   const syncSnapshotRef = useRef({
     progress: 0,
@@ -72,6 +85,7 @@ export default function MobilePlayerPage() {
     if (typeof window === 'undefined') return;
     let storedId = localStorage.getItem('quienes_player_id');
     const storedName = localStorage.getItem('quienes_player_name');
+    const storedEmoji = localStorage.getItem('quienes_player_emoji');
     const storedColor = localStorage.getItem('quienes_player_color');
 
     if (!storedId) {
@@ -80,6 +94,7 @@ export default function MobilePlayerPage() {
     }
     setPlayerId(storedId);
     if (storedName) setNickname(storedName);
+    if (storedEmoji) setSelectedEmoji(storedEmoji);
     if (storedColor) setSelectedColor(storedColor);
   }, []);
 
@@ -100,6 +115,9 @@ export default function MobilePlayerPage() {
         setGameState(data);
         if (data.me) {
           setIsJoined(true);
+        } else {
+          // If admin closed session / expelled all players, return mobile to registration screen
+          setIsJoined(false);
         }
 
         if (data.activeRound) {
@@ -172,6 +190,7 @@ export default function MobilePlayerPage() {
     setJoining(true);
     try {
       localStorage.setItem('quienes_player_name', nickname.trim());
+      localStorage.setItem('quienes_player_emoji', selectedEmoji);
       localStorage.setItem('quienes_player_color', selectedColor);
 
       const res = await fetch('/api/game', {
@@ -182,6 +201,7 @@ export default function MobilePlayerPage() {
           role: 'player',
           playerId,
           name: nickname.trim(),
+          emoji: selectedEmoji,
           avatarColor: selectedColor,
         }),
       });
@@ -212,8 +232,6 @@ export default function MobilePlayerPage() {
       const data = await res.json();
       if (res.ok) {
         setGameState(data);
-        setJustSubmittedFlash(true);
-        setTimeout(() => setJustSubmittedFlash(false), 900);
       }
     } finally {
       setSubmitting(false);
@@ -240,7 +258,7 @@ export default function MobilePlayerPage() {
     } catch (e) {}
   }
 
-  // Screen 1: Nickname Registration
+  // Screen 1: Nickname + 10 Famous Emojis Registration
   if (!isJoined || !gameState?.me) {
     return (
       <main
@@ -248,18 +266,15 @@ export default function MobilePlayerPage() {
         style={{ backgroundImage: "url('/key-visual-bg.jpg')" }}
       >
         <div className="w-full max-w-sm bg-white/95 backdrop-blur-md border-4 border-[#008296] rounded-3xl p-7 shadow-2xl">
-          <div className="text-center mb-6">
-            <span className="inline-block px-4 py-1 rounded-full bg-[#008296] text-white font-extrabold text-xs uppercase tracking-wider mb-2">
-              EN VIVO
-            </span>
+          <div className="text-center mb-5">
             <h1 className="font-display text-4xl font-black text-[#005566] uppercase tracking-wide">
               ¿QUIÉN ES?
             </h1>
           </div>
 
-          <form onSubmit={handleJoin} className="space-y-5">
+          <form onSubmit={handleJoin} className="space-y-4">
             <div>
-              <label className="block text-xs font-extrabold uppercase tracking-wider text-[#005566] mb-2">
+              <label className="block text-xs font-extrabold uppercase tracking-wider text-[#005566] mb-1.5">
                 Tu Nombre o Apodo
               </label>
               <input
@@ -269,12 +284,34 @@ export default function MobilePlayerPage() {
                 placeholder="Ej. Camila"
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
-                className="w-full px-4 py-3.5 rounded-2xl bg-[#f6f0e6] border-2 border-[#008296]/40 text-[#005566] font-extrabold text-lg focus:outline-none focus:border-[#008296]"
+                className="w-full px-4 py-3 rounded-2xl bg-[#f6f0e6] border-2 border-[#008296]/40 text-[#005566] font-extrabold text-lg focus:outline-none focus:border-[#008296]"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-extrabold uppercase tracking-wider text-[#005566] mb-2">
+              <label className="block text-xs font-extrabold uppercase tracking-wider text-[#005566] mb-1.5">
+                Elige tu Emoji
+              </label>
+              <div className="grid grid-cols-5 gap-2">
+                {FAMOUS_EMOJIS.map((em) => (
+                  <button
+                    key={em}
+                    type="button"
+                    onClick={() => setSelectedEmoji(em)}
+                    className={`h-11 rounded-2xl text-2xl flex items-center justify-center transition-all ${
+                      selectedEmoji === em
+                        ? 'bg-[#008296] scale-110 shadow-md ring-2 ring-[#005566]'
+                        : 'bg-[#f6f0e6] opacity-75 hover:opacity-100'
+                    }`}
+                  >
+                    {em}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-extrabold uppercase tracking-wider text-[#005566] mb-1.5">
                 Color
               </label>
               <div className="flex items-center justify-between gap-2">
@@ -283,7 +320,7 @@ export default function MobilePlayerPage() {
                     key={color}
                     type="button"
                     onClick={() => setSelectedColor(color)}
-                    className={`w-10 h-10 rounded-full transition-transform ${
+                    className={`w-9 h-9 rounded-full transition-transform ${
                       selectedColor === color
                         ? 'scale-125 ring-2 ring-[#005566] ring-offset-2'
                         : 'opacity-75'
@@ -320,22 +357,9 @@ export default function MobilePlayerPage() {
 
   return (
     <main
-      className="min-h-screen w-full flex flex-col justify-between p-4 pb-8 max-w-md mx-auto select-none bg-cover bg-center"
+      className="min-h-screen w-full flex flex-col justify-center p-4 pb-8 max-w-md mx-auto select-none bg-cover bg-center"
       style={{ backgroundImage: "url('/key-visual-bg.jpg')" }}
     >
-      {/* Top Player Status Bar (Clean: ONLY Player Name, no ranking or score shown on mobile) */}
-      <header className="flex items-center justify-center bg-white/95 backdrop-blur-md border-2 border-[#008296] px-5 py-3 rounded-2xl shadow-lg">
-        <div className="flex items-center gap-2.5">
-          <span
-            className="w-3.5 h-3.5 rounded-full shrink-0"
-            style={{ backgroundColor: me.avatarColor || '#008296' }}
-          />
-          <span className="font-display font-black text-[#005566] text-2xl uppercase truncate max-w-[220px]">
-            {me.name}
-          </span>
-        </div>
-      </header>
-
       {/* ================= LOBBY OR RANKING STATE ON MOBILE ================= */}
       {(phase === 'LOBBY' || phase === 'RANKING') && (
         <div className="flex-1 flex flex-col items-center justify-center text-center px-2 my-4 gap-4">
@@ -347,13 +371,13 @@ export default function MobilePlayerPage() {
               ¡ATENTO A LA PANTALLA!
             </h2>
             <p className="text-[#005566]/80 font-bold text-sm">
-              Mira la pantalla gigante del show para seguir los resultados y la próxima foto.
+              Mira la pantalla gigante para seguir la partida y la próxima foto.
             </p>
           </div>
         </div>
       )}
 
-      {/* ================= PLAYING OR REVEALED STATE ================= */}
+      {/* ================= PLAYING OR REVEALED STATE (NO player name bar at top!) ================= */}
       {(phase === 'PLAYING' || phase === 'REVEALED') && round && (
         <div className="flex-1 flex flex-col items-center justify-center gap-2.5 my-2">
           {/* Top Header Pill SEPARATED above the face frame */}
@@ -427,7 +451,7 @@ export default function MobilePlayerPage() {
             </div>
           </div>
 
-          {/* Live Hint Pill on Mobile if Director turned it on */}
+          {/* Hint Pill on Mobile if Director turned it on */}
           {round.showHintOnTv && round.hintText && (
             <div className="w-full bg-[#005566] border-l-4 border-[#e5a93c] text-white px-3.5 py-2 rounded-xl shadow flex items-center gap-2 text-xs">
               <Lightbulb className="w-4 h-4 text-[#e5a93c] shrink-0" />
@@ -435,14 +459,7 @@ export default function MobilePlayerPage() {
             </div>
           )}
 
-          {/* Brief confirmation toast when tapping an option (without locking or marking any button!) */}
-          {justSubmittedFlash && phase === 'PLAYING' && (
-            <div className="px-4 py-1 rounded-full bg-[#005566] text-white text-xs font-extrabold uppercase tracking-wider shadow animate-slide-up">
-              ¡Respuesta actualizada! Puedes cambiarla mientras quede tiempo
-            </div>
-          )}
-
-          {/* 1) PLAYING & Timer Running -> ALWAYS Show the 4 Unmarked Option Buttons so players can change their choice anytime! */}
+          {/* 1) PLAYING & Timer Running -> 4 Unmarked Option Buttons, zero text/words shown when tapping */}
           {phase === 'PLAYING' && !isTimeUp && (
             <div className="grid grid-cols-1 gap-2 w-full mt-0.5">
               {round.options?.map((optionText, idx) => {
@@ -478,7 +495,7 @@ export default function MobilePlayerPage() {
             </div>
           )}
 
-          {/* 3) REVEALED: Admin manually released the result! */}
+          {/* 3) REVEALED: Must say strictly "CORRECTO" or "INCORRECTO" */}
           {phase === 'REVEALED' && (
             <div
               className={`w-full rounded-3xl p-5 text-center border-4 shadow-2xl ${
@@ -491,7 +508,7 @@ export default function MobilePlayerPage() {
                 <>
                   <CheckCircle2 className="w-11 h-11 text-[#84bd00] mx-auto mb-1" />
                   <div className="font-display font-black text-3xl uppercase">
-                    ¡ACERTASTE!
+                    CORRECTO
                   </div>
                   <div className="text-[#e5a93c] text-lg font-extrabold mt-0.5 uppercase">
                     {round.correctName}
@@ -501,7 +518,7 @@ export default function MobilePlayerPage() {
                 <>
                   <XCircle className="w-11 h-11 text-[#ff5500] mx-auto mb-1" />
                   <div className="font-display font-black text-3xl uppercase text-[#ff5500]">
-                    {myCurrentRoundAnswer ? '¡NO ERA!' : '¡SIN RESPUESTA!'}
+                    INCORRECTO
                   </div>
                   <div className="text-[#005566] text-base font-extrabold mt-0.5">
                     Era:{' '}
@@ -518,7 +535,7 @@ export default function MobilePlayerPage() {
           {canSendSingleReaction && (
             <div className="w-full bg-white/95 border-2 border-[#008296]/30 rounded-2xl p-2.5 text-center shadow mt-1">
               <div className="text-[10px] font-extrabold uppercase tracking-wider text-[#008296] mb-1">
-                ENVÍA 1 REACCIÓN A LA PANTALLA (1 POR PREGUNTA)
+                ENVÍA 1 REACCIÓN A LA PANTALLA
               </div>
               <div className="flex items-center justify-around">
                 {REACTION_EMOJIS.map((em) => (
@@ -536,8 +553,6 @@ export default function MobilePlayerPage() {
           )}
         </div>
       )}
-
-      <div className="h-2" />
     </main>
   );
 }

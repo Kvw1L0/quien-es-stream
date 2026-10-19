@@ -25,6 +25,7 @@ import {
   Lightbulb,
   Zap,
   Drum,
+  Power,
 } from 'lucide-react';
 import DistortedCanvas from '@/components/DistortedCanvas';
 
@@ -84,6 +85,7 @@ export default function AdminDashboardPage() {
   const [uploading, setUploading] = useState(false);
   const [editingPhotoId, setEditingPhotoId] = useState(null);
   const [editName, setEditName] = useState('');
+  const [editGender, setEditGender] = useState('M');
   const [editHint, setEditHint] = useState('');
   const [editDistractors, setEditDistractors] = useState('');
   const [selectedPhotoId, setSelectedPhotoId] = useState(null);
@@ -118,7 +120,6 @@ export default function AdminDashboardPage() {
     };
   }, [selectedPhotoId]);
 
-  // Sync live hint input when round changes
   useEffect(() => {
     if (gameState?.activeRound) {
       setLiveHintInput(gameState.activeRound.hintText || '');
@@ -171,6 +172,7 @@ export default function AdminDashboardPage() {
   function startEditingPhoto(photo) {
     setEditingPhotoId(photo.id);
     setEditName(photo.name);
+    setEditGender(photo.gender || 'M');
     setEditHint(photo.hint || '');
     setEditDistractors((photo.customDistractors || []).join(', '));
   }
@@ -183,6 +185,7 @@ export default function AdminDashboardPage() {
     await sendAction('UPDATE_PHOTO', {
       photoId,
       name: editName,
+      gender: editGender,
       hint: editHint,
       customDistractors: distractorsArray,
     });
@@ -235,7 +238,7 @@ export default function AdminDashboardPage() {
               DIRECTOR DE STREAMING — ¿QUIÉN ES?
             </h1>
             <p className="text-xs text-slate-300 font-medium">
-              Suite completa de producción en vivo: Redoble 3-2-1, Pistas en Zócalo, Puntos x2/x3, Slider de Claridad y Reacciones.
+              Control de Pantalla Gigante, Jugadores y Lote de Fotos con Género Automático
             </p>
           </div>
         </div>
@@ -259,18 +262,35 @@ export default function AdminDashboardPage() {
             <Smartphone className="w-4 h-4" />
             Abrir Vista Jugador (/play)
           </a>
+
+          {/* Close Session / Expel All Button */}
+          <button
+            onClick={() => {
+              if (
+                confirm(
+                  '¿Cerrar la sesión actual? Esto reiniciará toda la partida y expulsará a todos los jugadores del salón.'
+                )
+              ) {
+                sendAction('CLOSE_SESSION');
+              }
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs transition shadow-lg"
+          >
+            <Power className="w-4 h-4" />
+            CERRAR SESIÓN / REINICIAR SALÓN
+          </button>
         </div>
       </header>
 
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LEFT COLUMN (8 cols): Live Show Controls & Photo Batch Manager */}
+        {/* LEFT COLUMN (8 cols): Show Controls & Photo Batch Manager */}
         <div className="lg:col-span-8 space-y-6">
-          {/* 1. LIVE SWITCHER DECK */}
+          {/* 1. SWITCHER DECK */}
           <section className="bg-[#0b2b36] border border-[#008296]/40 rounded-3xl p-6 shadow-xl">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
               <h2 className="text-sm font-black uppercase tracking-wider text-[#00b4cc] flex items-center gap-2">
                 <Sliders className="w-4 h-4" />
-                Mesa de Dirección en Vivo (TV y Celulares)
+                Mesa de Dirección (TV y Celulares)
               </h2>
               <span
                 className={`px-3.5 py-1 rounded-full text-xs font-black uppercase ${
@@ -281,7 +301,7 @@ export default function AdminDashboardPage() {
               >
                 {isTimeUp
                   ? 'TIEMPO TERMINADO — ESPERANDO TU REVELACIÓN MANUAL'
-                  : `ESTADO EN AIRE: ${phase}`}
+                  : `ESTADO ACTUAL: ${phase}`}
               </span>
             </div>
 
@@ -315,7 +335,6 @@ export default function AdminDashboardPage() {
                 2. LANZAR FOTO
               </button>
 
-              {/* FEATURE 6: 3-Second Drumroll Climax Reveal Button */}
               <button
                 onClick={() => sendAction('START_DRUMROLL_REVEAL')}
                 disabled={!round || phase === 'REVEALED' || round?.isDrumrolling}
@@ -358,7 +377,7 @@ export default function AdminDashboardPage() {
               </button>
             </div>
 
-            {/* Active Round Monitor, Live Hint Lower-Third & Manual Clarity Scrubber */}
+            {/* Active Round Monitor, Hint Lower-Third & Manual Clarity Scrubber */}
             {round && (
               <div
                 className={`rounded-2xl p-4 mb-5 border-2 transition space-y-4 ${
@@ -407,8 +426,8 @@ export default function AdminDashboardPage() {
                             ¡Respuesta revelada!
                             {round.fastestWinner && (
                               <span className="ml-2 text-[#e5a93c]">
-                                ⚡ Más rápido: {round.fastestWinner.name} (
-                                {(round.fastestWinner.elapsedMs / 1000).toFixed(2)}s)
+                                ⚡ Más rápido: {round.fastestWinner.emoji || '😎'}{' '}
+                                {round.fastestWinner.name}
                               </span>
                             )}
                           </span>
@@ -429,7 +448,6 @@ export default function AdminDashboardPage() {
                           ? 'bg-[#00b4cc] text-[#002b36] border-white shadow-[0_0_20px_rgba(0,180,204,0.5)]'
                           : 'bg-[#0b2b36] text-[#00b4cc] border-[#00b4cc]/50 hover:bg-[#00b4cc]/20'
                       }`}
-                      title="Activa o desactiva en la pantalla gigante las 4 alternativas y el avance de sus porcentajes"
                     >
                       <BarChart3 className="w-4 h-4" />
                       {round.showAudienceVotes
@@ -468,16 +486,15 @@ export default function AdminDashboardPage() {
                   </div>
                 </div>
 
-                {/* FEATURE 4 & 5: Lower-Third Hint Controls + Manual Clarity Scrubber */}
+                {/* Lower-Third Hint Controls + Manual Clarity Scrubber */}
                 {phase === 'PLAYING' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 border-t border-white/10">
-                    {/* Lower-third TV Hint launcher */}
                     <div className="flex items-center gap-2">
                       <input
                         type="text"
                         value={liveHintInput}
                         onChange={(e) => setLiveHintInput(e.target.value)}
-                        placeholder="Escribe una pista en vivo para el zócalo de TV..."
+                        placeholder="Escribe una pista para el zócalo de TV..."
                         className="flex-1 px-3 py-2 rounded-xl bg-[#0b2b36] border border-white/15 text-xs font-bold text-white"
                       />
                       <button
@@ -499,7 +516,6 @@ export default function AdminDashboardPage() {
                       </button>
                     </div>
 
-                    {/* Manual Clarity Slider (Director Scrubber) */}
                     <div className="flex items-center gap-3 bg-[#0b2b36] px-3.5 py-2 rounded-xl border border-white/10">
                       <span className="text-[11px] font-extrabold uppercase text-[#00b4cc] whitespace-nowrap">
                         Claridad Manual:
@@ -540,7 +556,7 @@ export default function AdminDashboardPage() {
               </div>
             )}
 
-            {/* Quick Round Settings (Effect Type, Timer Duration, Points Multiplier, TV Overlay Options) */}
+            {/* Quick Round Settings */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-3 border-t border-white/10">
               <div>
                 <label className="block text-[11px] font-bold uppercase text-slate-300 mb-1.5">
@@ -588,7 +604,6 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
 
-              {/* FEATURE 3: x1 / x2 / x3 Point Multiplier Selector */}
               <div>
                 <label className="block text-[11px] font-bold uppercase text-[#e5a93c] mb-1.5">
                   Multiplicador de Puntos
@@ -685,7 +700,7 @@ export default function AdminDashboardPage() {
                   Lote de Fotos Cargadas ({photos.length})
                 </h2>
                 <p className="text-xs text-slate-300">
-                  Arrastra todas las fotos del show. Puedes pre-configurar una pista (zócalo) y distractores en cada miniatura.
+                  Cada foto detecta automáticamente si es Hombre (♂) o Mujer (♀) para generar distractores del mismo género. Puedes cambiarlo con 1 clic en la etiqueta ♂/♀.
                 </p>
               </div>
 
@@ -737,7 +752,7 @@ export default function AdminDashboardPage() {
                   : 'Arrastra aquí las fotos en lote o haz clic para subirlas'}
               </div>
               <div className="text-xs text-slate-400 mt-1">
-                Las miniaturas quedan listas abajo para que elijas cuál lanzar al aire.
+                Las miniaturas quedan listas abajo para que elijas cuál lanzar.
               </div>
             </div>
 
@@ -747,6 +762,7 @@ export default function AdminDashboardPage() {
                 const isSelected = selectedPhotoId === photo.id;
                 const isOnAir = round?.photoId === photo.id;
                 const isEditing = editingPhotoId === photo.id;
+                const isFemale = photo.gender === 'F';
 
                 return (
                   <div
@@ -770,9 +786,29 @@ export default function AdminDashboardPage() {
                         <span className="px-2.5 py-0.5 rounded-full bg-black/75 text-white font-black text-xs">
                           #{index + 1}
                         </span>
+
+                        {/* 1-Click Gender Toggle Badge */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            sendAction('TOGGLE_PHOTO_GENDER', {
+                              photoId: photo.id,
+                            });
+                          }}
+                          className={`px-2.5 py-0.5 rounded-full font-black text-xs shadow transition ${
+                            isFemale
+                              ? 'bg-pink-500 hover:bg-pink-400 text-white'
+                              : 'bg-sky-600 hover:bg-sky-500 text-white'
+                          }`}
+                          title="Haz clic para cambiar entre Mujer y Hombre (filtra las opciones automáticamente por género)"
+                        >
+                          {isFemale ? '♀ Mujer' : '♂ Hombre'}
+                        </button>
+
                         {isOnAir && (
                           <span className="px-2.5 py-0.5 rounded-full bg-[#84bd00] text-[#002b36] font-black text-xs">
-                            EN AIRE
+                            ACTIVA
                           </span>
                         )}
                         {!isOnAir && photo.played && (
@@ -808,11 +844,35 @@ export default function AdminDashboardPage() {
                             placeholder="Nombre correcto"
                             className="w-full px-2.5 py-1.5 rounded-lg bg-[#0b2b36] border border-[#00b4cc] text-white text-xs font-bold"
                           />
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setEditGender('M')}
+                              className={`flex-1 py-1 rounded-lg text-xs font-bold border ${
+                                editGender === 'M'
+                                  ? 'bg-sky-600 border-white text-white'
+                                  : 'bg-[#0b2b36] border-white/10 text-slate-400'
+                              }`}
+                            >
+                              ♂ Hombre
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditGender('F')}
+                              className={`flex-1 py-1 rounded-lg text-xs font-bold border ${
+                                editGender === 'F'
+                                  ? 'bg-pink-500 border-white text-white'
+                                  : 'bg-[#0b2b36] border-white/10 text-slate-400'
+                              }`}
+                            >
+                              ♀ Mujer
+                            </button>
+                          </div>
                           <input
                             type="text"
                             value={editHint}
                             onChange={(e) => setEditHint(e.target.value)}
-                            placeholder="Pista opcional para TV (ej. Actor chileno)"
+                            placeholder="Pista opcional para TV"
                             className="w-full px-2.5 py-1.5 rounded-lg bg-[#0b2b36] border border-[#e5a93c]/50 text-slate-200 text-[11px]"
                           />
                           <input
@@ -844,7 +904,7 @@ export default function AdminDashboardPage() {
                                   startEditingPhoto(photo);
                                 }}
                                 className="p-1 text-slate-400 hover:text-white"
-                                title="Editar nombre, pista u opciones"
+                                title="Editar nombre, género, pista u opciones"
                               >
                                 <Edit3 className="w-3.5 h-3.5" />
                               </button>
@@ -857,7 +917,7 @@ export default function AdminDashboardPage() {
                             <p className="text-[11px] text-slate-400 truncate mt-0.5">
                               {photo.customDistractors?.length > 0
                                 ? `Distractores: ${photo.customDistractors.join(', ')}`
-                                : 'Distractores: Automáticos del lote'}
+                                : `Distractores: Automáticos (${isFemale ? 'Solo Mujeres' : 'Solo Hombres'})`}
                             </p>
                           </div>
 
@@ -889,7 +949,7 @@ export default function AdminDashboardPage() {
           </section>
         </div>
 
-        {/* RIGHT COLUMN (4 cols): Live Leaderboard & Player Moderation */}
+        {/* RIGHT COLUMN (4 cols): Leaderboard & Player Moderation */}
         <div className="lg:col-span-4 space-y-6">
           <section className="bg-[#0b2b36] border border-[#008296]/40 rounded-3xl p-6 shadow-xl">
             <div className="flex items-center justify-between mb-4">
@@ -932,12 +992,9 @@ export default function AdminDashboardPage() {
                         <span className="w-6 h-6 rounded-lg bg-[#0b2b36] text-[#e5a93c] font-black text-xs flex items-center justify-center shrink-0">
                           {idx + 1}
                         </span>
-                        <span
-                          className="w-3 h-3 rounded-full shrink-0"
-                          style={{
-                            backgroundColor: p.avatarColor || '#008296',
-                          }}
-                        />
+                        <span className="text-lg shrink-0">
+                          {p.emoji || '😎'}
+                        </span>
                         <div className="truncate">
                           <div className="font-bold text-sm text-white truncate flex items-center gap-1.5">
                             <span>{p.name}</span>
@@ -951,8 +1008,7 @@ export default function AdminDashboardPage() {
                             {p.score.toLocaleString()} pts
                             {answeredThisRound && (
                               <span className="ml-2 text-[#84bd00]">
-                                ● Votó ({round.options?.[p.lastAnswer.optionIndex]}) en{' '}
-                                {(p.lastAnswer.elapsedMs / 1000).toFixed(1)}s
+                                ● Votó ({round.options?.[p.lastAnswer.optionIndex]})
                               </span>
                             )}
                           </div>

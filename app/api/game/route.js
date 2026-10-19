@@ -4,6 +4,7 @@ import {
   saveGameState,
   computeRoundProgress,
   generateOptionsForPhoto,
+  inferGenderFromName,
 } from '@/lib/gameStore';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,6 @@ function buildClientPayload(state, role, playerId) {
   let currentPhase = state.phase;
   let roundStatus = { progress: 0, remainingMs: 0, elapsedMs: 0, isFinished: false };
 
-  // Check if drumroll countdown finished -> auto-complete the manual reveal!
   let drumrollAutoCompleted = false;
   if (
     currentPhase === 'PLAYING' &&
@@ -35,7 +35,6 @@ function buildClientPayload(state, role, playerId) {
   const isRevealed = currentPhase === 'REVEALED';
   const isTimeUp = currentPhase === 'PLAYING' && roundStatus.isFinished;
 
-  // Compute leaderboard (taking care not to leak unrevealed current-round points on TV/player before reveal)
   const rawPlayersList = Object.values(state.players || {});
   const playersList = rawPlayersList
     .map((p) => {
@@ -57,7 +56,6 @@ function buildClientPayload(state, role, playerId) {
       return (a.joinedAt || 0) - (b.joinedAt || 0);
     });
 
-  // Compute vote counts, recent responders feed, and fastest correct winner for current round
   const voteCounts = [0, 0, 0, 0];
   let totalVotes = 0;
   const roundResponders = [];
@@ -74,6 +72,7 @@ function buildClientPayload(state, role, playerId) {
         roundResponders.push({
           id: p.id,
           name: p.name,
+          emoji: p.emoji || '😎',
           avatarColor: p.avatarColor,
           answeredAt: p.lastAnswer.answeredAt,
         });
@@ -83,6 +82,7 @@ function buildClientPayload(state, role, playerId) {
             fastestCorrect = {
               id: p.id,
               name: p.name,
+              emoji: p.emoji || '😎',
               avatarColor: p.avatarColor,
               elapsedMs: p.lastAnswer.elapsedMs,
               pointsEarned: p.lastAnswer.pointsEarned,
@@ -116,6 +116,7 @@ function buildClientPayload(state, role, playerId) {
     leaderboard: playersList.slice(0, 20).map((p, idx) => ({
       id: p.id,
       name: p.name,
+      emoji: p.emoji || '😎',
       avatarColor: p.avatarColor,
       score: p.visibleScore,
       streak: p.streak || 0,
@@ -182,6 +183,7 @@ function buildClientPayload(state, role, playerId) {
     basePayload.me = {
       id: me.id,
       name: me.name,
+      emoji: me.emoji || '😎',
       avatarColor: me.avatarColor,
       lastAnswer: sanitizedLastAnswer,
     };
@@ -221,7 +223,7 @@ export async function POST(request) {
     switch (action) {
       // ================= PLAYER ACTIONS =================
       case 'JOIN_PLAYER': {
-        const { playerId, name, avatarColor } = body;
+        const { playerId, name, emoji, avatarColor } = body;
         if (!playerId || !name || !name.trim()) {
           return NextResponse.json({ error: 'Nombre requerido' }, { status: 400 });
         }
@@ -230,6 +232,7 @@ export async function POST(request) {
         state.players[playerId] = {
           id: playerId,
           name: cleanName,
+          emoji: emoji || existing?.emoji || '😎',
           avatarColor: avatarColor || existing?.avatarColor || '#008296',
           score: existing ? existing.score : 0,
           streak: existing ? existing.streak : 0,
@@ -255,8 +258,6 @@ export async function POST(request) {
           return NextResponse.json({ error: '¡Se acabó el tiempo para votar!' }, { status: 400 });
         }
 
-        // Allow changing the answer at any moment while the round is active!
-        // First revert any points/streak added from a previous choice in this same round:
         const prevAnswerForThisRound =
           player.lastAnswer?.roundId === state.activeRound.roundId
             ? player.lastAnswer
@@ -314,7 +315,6 @@ export async function POST(request) {
         const player = state.players[playerId];
         if (!player || !state.activeRound) break;
 
-        // Limit to strictly 1 reaction per question after the player has answered!
         if (
           !player.lastAnswer ||
           player.lastAnswer.roundId !== state.activeRound.roundId ||
@@ -330,6 +330,7 @@ export async function POST(request) {
           id: `rx-${now}-${Math.random().toString(36).slice(2, 6)}`,
           emoji,
           playerName: player.name || 'Espectador',
+          playerEmoji: player.emoji || '😎',
           avatarColor: player.avatarColor || '#008296',
           createdAt: now,
           offsetLeft: Math.floor(15 + Math.random() * 70),
@@ -344,9 +345,11 @@ export async function POST(request) {
         if (Array.isArray(photos)) {
           for (const item of photos) {
             if (!item.imageData) continue;
+            const cleanName = (item.name || 'Personaje Misterioso').trim();
             state.photos.push({
               id: `photo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-              name: (item.name || 'Personaje Misterioso').trim(),
+              name: cleanName,
+              gender: item.gender || inferGenderFromName(cleanName),
               hint: (item.hint || '').trim(),
               imageData: item.imageData,
               customDistractors: Array.isArray(item.customDistractors)
@@ -361,10 +364,11 @@ export async function POST(request) {
       }
 
       case 'UPDATE_PHOTO': {
-        const { photoId, name, hint, customDistractors } = body;
+        const { photoId, name, gender, hint, customDistractors } = body;
         const photo = state.photos.find((p) => p.id === photoId);
         if (photo) {
           if (typeof name === 'string' && name.trim()) photo.name = name.trim();
+          if (gender === 'M' || gender === 'F') photo.gender = gender;
           if (typeof hint === 'string') photo.hint = hint.trim();
           if (Array.isArray(customDistractors)) {
             photo.customDistractors = customDistractors.map((d) => d.trim()).filter(Boolean);
@@ -372,6 +376,17 @@ export async function POST(request) {
           if (state.activeRound?.photoId === photoId && typeof hint === 'string') {
             state.activeRound.hintText = hint.trim();
           }
+          await saveGameState(state);
+        }
+        break;
+      }
+
+      case 'TOGGLE_PHOTO_GENDER': {
+        const { photoId } = body;
+        const photo = state.photos.find((p) => p.id === photoId);
+        if (photo) {
+          const current = photo.gender || inferGenderFromName(photo.name);
+          photo.gender = current === 'F' ? 'M' : 'F';
           await saveGameState(state);
         }
         break;
@@ -568,6 +583,19 @@ export async function POST(request) {
           state.players[id].streak = 0;
           state.players[id].lastAnswer = null;
         }
+        for (const p of state.photos) {
+          p.played = false;
+        }
+        await saveGameState(state);
+        break;
+      }
+
+      case 'CLOSE_SESSION': {
+        // Expels all players from the room, resets active round, reactions, and played flags, returning to LOBBY
+        state.players = {};
+        state.reactions = [];
+        state.activeRound = null;
+        state.phase = 'LOBBY';
         for (const p of state.photos) {
           p.played = false;
         }

@@ -42,15 +42,14 @@ const OPTION_STYLES = [
   },
 ];
 
-// Deterministic horizontal position for floating responder names
 function getResponderPosition(id = '') {
   let hash = 0;
   for (let i = 0; i < id.length; i++) {
     hash = (hash * 31 + id.charCodeAt(i)) % 1000;
   }
   const side = hash % 2 === 0 ? 'left' : 'right';
-  const offsetPct = 4 + (hash % 14); // 4% to 17% from the left or right edge
-  const topPct = 22 + ((hash * 7) % 48); // 22% to 70% vertical position
+  const offsetPct = 4 + (hash % 14);
+  const topPct = 22 + ((hash * 7) % 48);
   return { side, offsetPct, topPct };
 }
 
@@ -83,7 +82,6 @@ export default function TvBroadcastPage() {
     }
   }, []);
 
-  // Poll server state every 400ms
   useEffect(() => {
     let active = true;
     async function fetchState() {
@@ -124,7 +122,6 @@ export default function TvBroadcastPage() {
     };
   }, []);
 
-  // 60fps local interpolation
   useEffect(() => {
     let rafId;
     function updateLoop() {
@@ -252,7 +249,7 @@ export default function TvBroadcastPage() {
         />
       )}
 
-      {/* Floating Responder Names in Open Space (NO response times shown, just the name floating!) */}
+      {/* Floating Responder Names in Open Space (with their chosen Emoji, NO response time!) */}
       {phase === 'PLAYING' && round?.recentResponders?.length > 0 && (
         <div className="pointer-events-none fixed inset-0 z-20 overflow-hidden">
           {round.recentResponders.slice(0, 6).map((resp) => {
@@ -268,10 +265,7 @@ export default function TvBroadcastPage() {
                 }}
                 className="absolute flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-white/95 border-2 border-[#008296]/40 text-[#005566] shadow-[0_12px_30px_rgba(0,85,102,0.22)] animate-float"
               >
-                <span
-                  className="w-3.5 h-3.5 rounded-full shrink-0"
-                  style={{ backgroundColor: resp.avatarColor || '#008296' }}
-                />
+                <span className="text-2xl">{resp.emoji || '😎'}</span>
                 <span className="font-display font-black text-2xl md:text-3xl uppercase tracking-wide">
                   {resp.name}
                 </span>
@@ -281,7 +275,7 @@ export default function TvBroadcastPage() {
         </div>
       )}
 
-      {/* Live Floating Emoji Reactions Lane */}
+      {/* Floating Emoji Reactions Lane */}
       <div className="pointer-events-none fixed bottom-28 left-8 z-50 w-64 h-96 overflow-visible">
         {reactions.map((rx) => (
           <div
@@ -296,7 +290,7 @@ export default function TvBroadcastPage() {
               className="mt-1 px-3 py-0.5 rounded-full text-xs font-extrabold text-white shadow-md whitespace-nowrap"
               style={{ backgroundColor: rx.avatarColor || '#008296' }}
             >
-              {rx.playerName}
+              {rx.playerEmoji || ''} {rx.playerName}
             </span>
           </div>
         ))}
@@ -345,10 +339,7 @@ export default function TvBroadcastPage() {
                   key={p.id}
                   className="flex items-center gap-2.5 px-5 py-2 rounded-full bg-white/95 border-2 border-[#008296]/25 shadow-md"
                 >
-                  <span
-                    className="w-3.5 h-3.5 rounded-full"
-                    style={{ backgroundColor: p.avatarColor || '#008296' }}
-                  />
+                  <span className="text-xl">{p.emoji || '😎'}</span>
                   <span className="font-extrabold text-[#005566] text-xl">
                     {p.name}
                   </span>
@@ -359,12 +350,9 @@ export default function TvBroadcastPage() {
         </div>
       )}
 
-      {/* ================= PHASE 2 & 3: PLAYING & REVEALED (Exact Center + 25% Larger + Zero Resize when Options Appear) ================= */}
+      {/* ================= PHASE 2 & 3: PLAYING & REVEALED ================= */}
       {(phase === 'PLAYING' || phase === 'REVEALED') && round && (
         <div className="z-10 flex flex-col items-center justify-center w-full max-w-[1600px] px-6">
-          {/* TOP DEDICATED TELEVISION HEADER BANNER
-              Always says "¿QUIÉN ES?" during PLAYING (even when timer reaches 0!),
-              until the character name is revealed! */}
           <div className="w-full flex flex-wrap items-center justify-center gap-5 mb-5 min-h-[88px]">
             {multiplier > 1 && (
               <div className="flex items-center gap-2.5 px-7 py-3 rounded-3xl bg-gradient-to-r from-[#e5a93c] via-[#ff5500] to-[#e5a93c] border-4 border-white text-white shadow-xl animate-bounce">
@@ -397,7 +385,6 @@ export default function TvBroadcastPage() {
               </div>
             )}
 
-            {/* 3-2-1 Drumroll Climax Banner */}
             {isDrumrolling && (
               <div className="flex items-center gap-5 px-12 py-3.5 rounded-3xl bg-[#005566] border-4 border-[#e5a93c] text-white shadow-2xl animate-drumroll">
                 <span className="font-display text-5xl md:text-6xl font-black uppercase tracking-wider text-[#e5a93c]">
@@ -406,7 +393,6 @@ export default function TvBroadcastPage() {
               </div>
             )}
 
-            {/* REVEALED STATE: Character Name */}
             {phase === 'REVEALED' && (
               <div className="flex flex-wrap items-center justify-center gap-5">
                 <div className="flex items-center gap-5 px-12 py-3.5 rounded-3xl bg-gradient-to-r from-[#008296] via-[#006b7d] to-[#008296] border-4 border-[#e5a93c] text-white shadow-[0_15px_45px_rgba(0,85,102,0.35)] animate-float">
@@ -426,7 +412,7 @@ export default function TvBroadcastPage() {
                         MÁS RÁPIDO DE LA RONDA
                       </div>
                       <div className="font-display text-4xl font-black text-[#005566] uppercase leading-tight">
-                        {round.fastestWinner.name}{' '}
+                        {round.fastestWinner.emoji || '😎'} {round.fastestWinner.name}{' '}
                         <span className="text-[#84bd00]">
                           +{round.fastestWinner.pointsEarned} PTS
                         </span>
@@ -438,12 +424,7 @@ export default function TvBroadcastPage() {
             )}
           </div>
 
-          {/* MAIN TELEVISION STAGE:
-              The Giant Portrait stays at the EXACT SAME 25%-larger size (`580px - 660px`) at all times!
-              When `showOptionsPanelOnTv` is triggered by Admin, the options appear with a fade/slide-up animation
-              without resizing the portrait or any other element! */}
           <div className="relative flex flex-col lg:flex-row items-center justify-center gap-10 w-full">
-            {/* Fixed-Size Giant Portrait Frame (25% Larger & Never Shrinks!) */}
             <div className="relative flex flex-col items-center shrink-0">
               <div
                 className={`relative w-[500px] h-[500px] md:w-[600px] md:h-[600px] xl:w-[650px] xl:h-[650px] rounded-[2.8rem] overflow-hidden bg-white p-3.5 shadow-[0_28px_80px_rgba(0,85,102,0.36)] border-4 ${
@@ -492,7 +473,6 @@ export default function TvBroadcastPage() {
                 </div>
               </div>
 
-              {/* Lower-Third TV Hint Banner (Zócalo de Pista) */}
               {round.showHintOnTv && round.hintText && (
                 <div className="mt-4 max-w-[650px] w-full bg-[#005566] border-l-8 border-[#e5a93c] text-white px-6 py-3.5 rounded-2xl shadow-xl flex items-center gap-4 animate-slide-up">
                   <Lightbulb className="w-8 h-8 text-[#e5a93c] shrink-0 fill-[#e5a93c]/20" />
@@ -508,14 +488,12 @@ export default function TvBroadcastPage() {
               )}
             </div>
 
-            {/* 4 Television Broadcast Option Cards + Live Vote Bars
-                Appears with `animate-slide-up` when Admin toggles it, WITHOUT changing the size of the portrait! */}
             {showOptionsPanelOnTv && (
               <div className="flex flex-col gap-4 w-full max-w-2xl animate-slide-up">
                 <div className="flex items-center justify-between px-1">
                   <div className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full bg-[#005566] text-white font-extrabold text-sm uppercase tracking-wider shadow">
                     <Users className="w-5 h-5 text-[#00b4cc]" />
-                    <span>{round.totalVotes || 0} RESPUESTAS EN VIVO</span>
+                    <span>{round.totalVotes || 0} RESPUESTAS</span>
                   </div>
                 </div>
 
@@ -596,7 +574,7 @@ export default function TvBroadcastPage() {
         </div>
       )}
 
-      {/* ================= PHASE 4: RANKING / PODIUM (Exact Center + 25% Larger) ================= */}
+      {/* ================= PHASE 4: RANKING / PODIUM ================= */}
       {phase === 'RANKING' && (
         <div className="z-10 flex flex-col items-center justify-center w-full max-w-5xl px-6">
           <div className="inline-flex items-center gap-3 px-9 py-3 rounded-full bg-[#008296] text-white font-display font-black text-3xl uppercase tracking-wider shadow-lg mb-6">
@@ -645,12 +623,7 @@ export default function TvBroadcastPage() {
                     </div>
 
                     <div className="flex items-center gap-3.5">
-                      <span
-                        className="w-4 h-4 rounded-full shrink-0"
-                        style={{
-                          backgroundColor: player.avatarColor || '#008296',
-                        }}
-                      />
+                      <span className="text-3xl">{player.emoji || '😎'}</span>
                       <span className="font-display font-black text-4xl uppercase tracking-wide">
                         {player.name}
                       </span>
