@@ -34,22 +34,22 @@ const AVATAR_COLORS = [
 const OPTION_STYLES = [
   {
     label: 'A',
-    bg: 'bg-[#008296] active:bg-[#00697a]',
+    bg: 'bg-[#008296] active:bg-[#005566] active:scale-[0.97]',
     border: 'border-[#005566]',
   },
   {
     label: 'B',
-    bg: 'bg-[#e59a24] active:bg-[#cc8414]',
+    bg: 'bg-[#e59a24] active:bg-[#b8740a] active:scale-[0.97]',
     border: 'border-[#b8740a]',
   },
   {
     label: 'C',
-    bg: 'bg-[#73a900] active:bg-[#5e8a00]',
+    bg: 'bg-[#73a900] active:bg-[#527800] active:scale-[0.97]',
     border: 'border-[#527800]',
   },
   {
     label: 'D',
-    bg: 'bg-[#ff5500] active:bg-[#e04800]',
+    bg: 'bg-[#ff5500] active:bg-[#c43e00] active:scale-[0.97]',
     border: 'border-[#c43e00]',
   },
 ];
@@ -65,10 +65,11 @@ export default function MobilePlayerPage() {
   const [joining, setJoining] = useState(false);
 
   const [gameState, setGameState] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
   const [smoothProgress, setSmoothProgress] = useState(0);
   const [smoothRemainingSec, setSmoothRemainingSec] = useState(0);
   const [drumrollSec, setDrumrollSec] = useState(0);
+
+  const lastTapTimeRef = useRef(0);
 
   const syncSnapshotRef = useRef({
     progress: 0,
@@ -83,14 +84,25 @@ export default function MobilePlayerPage() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    let storedId = localStorage.getItem('quienes_player_id');
-    const storedName = localStorage.getItem('quienes_player_name');
-    const storedEmoji = localStorage.getItem('quienes_player_emoji');
-    const storedColor = localStorage.getItem('quienes_player_color');
+    let storedId = null;
+    let storedName = null;
+    let storedEmoji = null;
+    let storedColor = null;
+
+    try {
+      storedId = localStorage.getItem('quienes_player_id');
+      storedName = localStorage.getItem('quienes_player_name');
+      storedEmoji = localStorage.getItem('quienes_player_emoji');
+      storedColor = localStorage.getItem('quienes_player_color');
+    } catch (e) {
+      // Fallback if iOS Private Browsing blocks localStorage
+    }
 
     if (!storedId) {
       storedId = `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      localStorage.setItem('quienes_player_id', storedId);
+      try {
+        localStorage.setItem('quienes_player_id', storedId);
+      } catch (e) {}
     }
     setPlayerId(storedId);
     if (storedName) setNickname(storedName);
@@ -116,7 +128,6 @@ export default function MobilePlayerPage() {
         if (data.me) {
           setIsJoined(true);
         } else {
-          // If admin closed session / expelled all players, return mobile to registration screen
           setIsJoined(false);
         }
 
@@ -136,15 +147,17 @@ export default function MobilePlayerPage() {
     }
 
     poll();
-    const interval = setInterval(poll, 450);
+    const interval = setInterval(poll, 500);
     return () => {
       active = false;
       clearInterval(interval);
     };
   }, [playerId]);
 
+  // IMPORTANT FOR iOS SAFARI:
+  // Instead of 60fps re-renders (which cancel touch/click events on iOS Safari),
+  // update at a gentle 4fps (every 250ms) and only when values meaningfully change!
   useEffect(() => {
-    let rafId;
     function tick() {
       if (gameState?.phase === 'PLAYING' && gameState?.activeRound) {
         const snap = syncSnapshotRef.current;
@@ -170,7 +183,8 @@ export default function MobilePlayerPage() {
           const remMs = Math.max(0, snap.remainingMs - delta);
           const prog =
             snap.durationMs > 0 ? Math.min(1, 1 - remMs / snap.durationMs) : 1;
-          setSmoothProgress(prog);
+          // Round progress to 2 decimals so React skips unnecessary DOM updates while finger is tapping
+          setSmoothProgress(Math.round(prog * 50) / 50);
           setSmoothRemainingSec(Math.ceil(remMs / 1000));
         }
       } else if (gameState?.phase === 'REVEALED') {
@@ -178,10 +192,11 @@ export default function MobilePlayerPage() {
         setSmoothRemainingSec(0);
         setDrumrollSec(0);
       }
-      rafId = requestAnimationFrame(tick);
     }
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
+
+    tick();
+    const timerId = setInterval(tick, 250);
+    return () => clearInterval(timerId);
   }, [gameState?.phase, gameState?.activeRound]);
 
   async function handleJoin(e) {
@@ -189,9 +204,11 @@ export default function MobilePlayerPage() {
     if (!nickname.trim() || !playerId) return;
     setJoining(true);
     try {
-      localStorage.setItem('quienes_player_name', nickname.trim());
-      localStorage.setItem('quienes_player_emoji', selectedEmoji);
-      localStorage.setItem('quienes_player_color', selectedColor);
+      try {
+        localStorage.setItem('quienes_player_name', nickname.trim());
+        localStorage.setItem('quienes_player_emoji', selectedEmoji);
+        localStorage.setItem('quienes_player_color', selectedColor);
+      } catch (err) {}
 
       const res = await fetch('/api/game', {
         method: 'POST',
@@ -216,8 +233,33 @@ export default function MobilePlayerPage() {
   }
 
   async function handleSelectOption(optionIndex) {
-    if (submitting || !playerId || !gameState?.activeRound) return;
-    setSubmitting(true);
+    if (!playerId || !gameState?.activeRound) return;
+    // Prevent accidental double fire from onTouchStart + onClick on iOS
+    const now = Date.now();
+    if (now - lastTapTimeRef.current < 180) return;
+    lastTapTimeRef.current = now;
+
+    // Optimistically update local state so the single-reaction bar appears immediately on iPhone
+    setGameState((prev) => {
+      if (!prev || !prev.activeRound) return prev;
+      const prevAns =
+        prev.me?.lastAnswer?.roundId === prev.activeRound.roundId
+          ? prev.me.lastAnswer
+          : null;
+      return {
+        ...prev,
+        me: {
+          ...(prev.me || { id: playerId, name: nickname }),
+          lastAnswer: {
+            roundId: prev.activeRound.roundId,
+            optionIndex,
+            answeredAt: now,
+            hasReacted: Boolean(prevAns?.hasReacted),
+          },
+        },
+      };
+    });
+
     try {
       const res = await fetch('/api/game', {
         method: 'POST',
@@ -229,17 +271,30 @@ export default function MobilePlayerPage() {
           optionIndex,
         }),
       });
-      const data = await res.json();
       if (res.ok) {
+        const data = await res.json();
         setGameState(data);
       }
-    } finally {
-      setSubmitting(false);
-    }
+    } catch (e) {}
   }
 
   async function handleSendReaction(emoji) {
     if (!playerId) return;
+    // Optimistically hide reaction bar immediately after 1 tap
+    setGameState((prev) => {
+      if (!prev || !prev.me?.lastAnswer) return prev;
+      return {
+        ...prev,
+        me: {
+          ...prev.me,
+          lastAnswer: {
+            ...prev.me.lastAnswer,
+            hasReacted: true,
+          },
+        },
+      };
+    });
+
     try {
       const res = await fetch('/api/game', {
         method: 'POST',
@@ -262,7 +317,7 @@ export default function MobilePlayerPage() {
   if (!isJoined || !gameState?.me) {
     return (
       <main
-        className="min-h-screen w-full flex flex-col items-center justify-center p-6 bg-cover bg-center"
+        className="min-h-screen w-full flex flex-col items-center justify-center p-6 bg-cover bg-center touch-manipulation"
         style={{ backgroundImage: "url('/key-visual-bg.jpg')" }}
       >
         <div className="w-full max-w-sm bg-white/95 backdrop-blur-md border-4 border-[#008296] rounded-3xl p-7 shadow-2xl">
@@ -298,7 +353,7 @@ export default function MobilePlayerPage() {
                     key={em}
                     type="button"
                     onClick={() => setSelectedEmoji(em)}
-                    className={`h-11 rounded-2xl text-2xl flex items-center justify-center transition-all ${
+                    className={`h-11 rounded-2xl text-2xl flex items-center justify-center transition-all touch-manipulation cursor-pointer ${
                       selectedEmoji === em
                         ? 'bg-[#008296] scale-110 shadow-md ring-2 ring-[#005566]'
                         : 'bg-[#f6f0e6] opacity-75 hover:opacity-100'
@@ -320,7 +375,7 @@ export default function MobilePlayerPage() {
                     key={color}
                     type="button"
                     onClick={() => setSelectedColor(color)}
-                    className={`w-9 h-9 rounded-full transition-transform ${
+                    className={`w-9 h-9 rounded-full transition-transform touch-manipulation cursor-pointer ${
                       selectedColor === color
                         ? 'scale-125 ring-2 ring-[#005566] ring-offset-2'
                         : 'opacity-75'
@@ -334,7 +389,7 @@ export default function MobilePlayerPage() {
             <button
               type="submit"
               disabled={joining || !nickname.trim()}
-              className="w-full py-4 rounded-2xl bg-[#008296] hover:bg-[#006b7d] text-white font-display font-black text-2xl uppercase tracking-wider shadow-lg active:scale-98 disabled:opacity-50"
+              className="w-full py-4 rounded-2xl bg-[#008296] hover:bg-[#006b7d] text-white font-display font-black text-2xl uppercase tracking-wider shadow-lg active:scale-98 disabled:opacity-50 touch-manipulation cursor-pointer"
             >
               {joining ? 'CONECTANDO...' : 'ENTRAR A JUGAR'}
             </button>
@@ -357,8 +412,11 @@ export default function MobilePlayerPage() {
 
   return (
     <main
-      className="min-h-screen w-full flex flex-col justify-center p-4 pb-8 max-w-md mx-auto select-none bg-cover bg-center"
-      style={{ backgroundImage: "url('/key-visual-bg.jpg')" }}
+      className="min-h-screen w-full flex flex-col justify-center p-4 pb-8 max-w-md mx-auto select-none touch-manipulation bg-cover bg-center"
+      style={{
+        backgroundImage: "url('/key-visual-bg.jpg')",
+        WebkitTapHighlightColor: 'transparent',
+      }}
     >
       {/* ================= LOBBY OR RANKING STATE ON MOBILE ================= */}
       {(phase === 'LOBBY' || phase === 'RANKING') && (
@@ -377,7 +435,7 @@ export default function MobilePlayerPage() {
         </div>
       )}
 
-      {/* ================= PLAYING OR REVEALED STATE (NO player name bar at top!) ================= */}
+      {/* ================= PLAYING OR REVEALED STATE ================= */}
       {(phase === 'PLAYING' || phase === 'REVEALED') && round && (
         <div className="flex-1 flex flex-col items-center justify-center gap-2.5 my-2">
           {/* Top Header Pill SEPARATED above the face frame */}
@@ -459,22 +517,26 @@ export default function MobilePlayerPage() {
             </div>
           )}
 
-          {/* 1) PLAYING & Timer Running -> 4 Unmarked Option Buttons, zero text/words shown when tapping */}
+          {/* 1) PLAYING & Timer Running -> 4 Option Buttons optimized for iOS Safari touch */}
           {phase === 'PLAYING' && !isTimeUp && (
-            <div className="grid grid-cols-1 gap-2 w-full mt-0.5">
+            <div className="grid grid-cols-1 gap-2.5 w-full mt-1 relative z-30">
               {round.options?.map((optionText, idx) => {
                 const style = OPTION_STYLES[idx % 4];
                 return (
                   <button
                     key={idx}
-                    disabled={submitting}
+                    type="button"
+                    onTouchEnd={(e) => {
+                      e.preventDefault();
+                      handleSelectOption(idx);
+                    }}
                     onClick={() => handleSelectOption(idx)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-2xl ${style.bg} border-b-4 ${style.border} text-left shadow-lg active:scale-95 transition-transform`}
+                    className={`w-full flex items-center gap-3 p-3.5 rounded-2xl ${style.bg} border-b-4 ${style.border} text-left shadow-lg transition-transform touch-manipulation cursor-pointer select-none`}
                   >
-                    <span className="w-8 h-8 rounded-xl bg-black/20 flex items-center justify-center font-display font-black text-xl text-white shrink-0">
+                    <span className="w-8 h-8 rounded-xl bg-black/20 flex items-center justify-center font-display font-black text-xl text-white shrink-0 pointer-events-none">
                       {style.label}
                     </span>
-                    <span className="font-display font-black text-white text-2xl uppercase tracking-wide leading-tight">
+                    <span className="font-display font-black text-white text-2xl uppercase tracking-wide leading-tight pointer-events-none">
                       {optionText}
                     </span>
                   </button>
@@ -533,7 +595,7 @@ export default function MobilePlayerPage() {
 
           {/* Strictly 1 Emoji Reaction allowed per question AFTER the player has answered */}
           {canSendSingleReaction && (
-            <div className="w-full bg-white/95 border-2 border-[#008296]/30 rounded-2xl p-2.5 text-center shadow mt-1">
+            <div className="w-full bg-white/95 border-2 border-[#008296]/30 rounded-2xl p-2.5 text-center shadow mt-1 relative z-30">
               <div className="text-[10px] font-extrabold uppercase tracking-wider text-[#008296] mb-1">
                 ENVÍA 1 REACCIÓN A LA PANTALLA
               </div>
@@ -542,8 +604,12 @@ export default function MobilePlayerPage() {
                   <button
                     key={em}
                     type="button"
+                    onTouchEnd={(e) => {
+                      e.preventDefault();
+                      handleSendReaction(em);
+                    }}
                     onClick={() => handleSendReaction(em)}
-                    className="text-2xl p-1.5 rounded-xl bg-[#f6f0e6] active:scale-125 transition-transform"
+                    className="text-2xl p-1.5 rounded-xl bg-[#f6f0e6] active:scale-125 transition-transform touch-manipulation cursor-pointer"
                   >
                     {em}
                   </button>
