@@ -1,7 +1,17 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { Trophy, Flame, CheckCircle2, XCircle, Clock, Sparkles, Lock } from 'lucide-react';
+import {
+  Trophy,
+  Flame,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Sparkles,
+  Lock,
+  Lightbulb,
+  Zap,
+} from 'lucide-react';
 import DistortedCanvas from '@/components/DistortedCanvas';
 
 const AVATAR_COLORS = [
@@ -36,6 +46,8 @@ const OPTION_STYLES = [
   },
 ];
 
+const REACTION_EMOJIS = ['🔥', '😂', '🤯', '👏', '❤️', '🎉'];
+
 export default function MobilePlayerPage() {
   const [playerId, setPlayerId] = useState(null);
   const [nickname, setNickname] = useState('');
@@ -45,14 +57,19 @@ export default function MobilePlayerPage() {
 
   const [gameState, setGameState] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [reactionCooldown, setReactionCooldown] = useState(false);
   const [smoothProgress, setSmoothProgress] = useState(0);
   const [smoothRemainingSec, setSmoothRemainingSec] = useState(0);
+  const [drumrollSec, setDrumrollSec] = useState(0);
 
   const syncSnapshotRef = useRef({
     progress: 0,
     remainingMs: 0,
     durationMs: 15000,
     isPaused: false,
+    manualProgress: null,
+    isDrumrolling: false,
+    drumrollRemainingMs: 0,
     syncedAt: 0,
   });
 
@@ -96,6 +113,9 @@ export default function MobilePlayerPage() {
             remainingMs: data.activeRound.remainingMs || 0,
             durationMs: data.activeRound.durationMs || 15000,
             isPaused: Boolean(data.activeRound.isPaused),
+            manualProgress: data.activeRound.manualProgress,
+            isDrumrolling: Boolean(data.activeRound.isDrumrolling),
+            drumrollRemainingMs: data.activeRound.drumrollRemainingMs || 0,
             syncedAt: performance.now(),
           };
         }
@@ -103,7 +123,7 @@ export default function MobilePlayerPage() {
     }
 
     poll();
-    const interval = setInterval(poll, 500);
+    const interval = setInterval(poll, 450);
     return () => {
       active = false;
       clearInterval(interval);
@@ -115,11 +135,25 @@ export default function MobilePlayerPage() {
     function tick() {
       if (gameState?.phase === 'PLAYING' && gameState?.activeRound) {
         const snap = syncSnapshotRef.current;
-        if (snap.isPaused) {
+        const delta = performance.now() - snap.syncedAt;
+
+        if (snap.isDrumrolling) {
+          const dRem = Math.max(0, snap.drumrollRemainingMs - delta);
+          setDrumrollSec(Math.ceil(dRem / 1000));
+        } else {
+          setDrumrollSec(0);
+        }
+
+        if (typeof snap.manualProgress === 'number') {
+          setSmoothProgress(snap.manualProgress);
+          const remMs = snap.isPaused
+            ? snap.remainingMs
+            : Math.max(0, snap.remainingMs - delta);
+          setSmoothRemainingSec(Math.ceil(remMs / 1000));
+        } else if (snap.isPaused) {
           setSmoothProgress(snap.progress);
           setSmoothRemainingSec(Math.ceil(snap.remainingMs / 1000));
         } else {
-          const delta = performance.now() - snap.syncedAt;
           const remMs = Math.max(0, snap.remainingMs - delta);
           const prog =
             snap.durationMs > 0 ? Math.min(1, 1 - remMs / snap.durationMs) : 1;
@@ -129,6 +163,7 @@ export default function MobilePlayerPage() {
       } else if (gameState?.phase === 'REVEALED') {
         setSmoothProgress(1);
         setSmoothRemainingSec(0);
+        setDrumrollSec(0);
       }
       rafId = requestAnimationFrame(tick);
     }
@@ -186,6 +221,24 @@ export default function MobilePlayerPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleSendReaction(emoji) {
+    if (reactionCooldown || !playerId) return;
+    setReactionCooldown(true);
+    setTimeout(() => setReactionCooldown(false), 600);
+    try {
+      await fetch('/api/game', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'SEND_REACTION',
+          role: 'player',
+          playerId,
+          emoji,
+        }),
+      });
+    } catch (e) {}
   }
 
   // Screen 1: Nickname Registration
@@ -261,6 +314,10 @@ export default function MobilePlayerPage() {
   const myCurrentRoundAnswer =
     round && me.lastAnswer?.roundId === round.roundId ? me.lastAnswer : null;
   const isTimeUp = phase === 'PLAYING' && smoothRemainingSec <= 0;
+  const isDrumrolling = phase === 'PLAYING' && round?.isDrumrolling && drumrollSec > 0;
+  const multiplier = round?.pointsMultiplier || gameState.settings?.pointsMultiplier || 1;
+  const isFastestWinner =
+    phase === 'REVEALED' && round?.fastestWinner?.id === me.id;
 
   return (
     <main
@@ -301,9 +358,9 @@ export default function MobilePlayerPage() {
 
       {/* ================= LOBBY STATE ================= */}
       {phase === 'LOBBY' && (
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-4 my-6">
-          <div className="bg-white/95 border-4 border-[#008296] rounded-3xl p-7 shadow-2xl w-full">
-            <div className="w-16 h-16 rounded-2xl bg-[#008296]/15 flex items-center justify-center mx-auto mb-4 animate-pulse">
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-2 my-4 gap-4">
+          <div className="bg-white/95 border-4 border-[#008296] rounded-3xl p-6 shadow-2xl w-full">
+            <div className="w-16 h-16 rounded-2xl bg-[#008296]/15 flex items-center justify-center mx-auto mb-3 animate-pulse">
               <Sparkles className="w-9 h-9 text-[#008296]" />
             </div>
             <h2 className="font-display text-3xl font-black text-[#005566] uppercase mb-1">
@@ -313,17 +370,43 @@ export default function MobilePlayerPage() {
               Mira la pantalla principal, la próxima foto está por comenzar...
             </p>
           </div>
+
+          {/* Emoji Reaction Bar in Lobby */}
+          <div className="w-full bg-white/95 border-2 border-[#008296]/30 rounded-2xl p-3 shadow-lg">
+            <div className="text-[10px] font-extrabold uppercase tracking-wider text-[#008296] mb-2">
+              ENVÍA TU REACCIÓN A LA PANTALLA TV
+            </div>
+            <div className="flex items-center justify-around">
+              {REACTION_EMOJIS.map((em) => (
+                <button
+                  key={em}
+                  type="button"
+                  disabled={reactionCooldown}
+                  onClick={() => handleSendReaction(em)}
+                  className="text-2xl p-2 rounded-xl bg-[#f6f0e6] active:scale-125 transition-transform"
+                >
+                  {em}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
       {/* ================= PLAYING, TIME-UP SUSPENSE OR REVEALED STATE ================= */}
       {(phase === 'PLAYING' || phase === 'REVEALED') && round && (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 my-3">
-          {/* Top Header Pill SEPARATED above the face frame so it never covers the portrait */}
-          <div className="w-full flex justify-center">
-            {phase === 'PLAYING' && !isTimeUp && (
+        <div className="flex-1 flex flex-col items-center justify-center gap-2.5 my-2">
+          {/* Top Header Pill SEPARATED above the face frame */}
+          <div className="w-full flex flex-wrap items-center justify-center gap-2">
+            {multiplier > 1 && (
+              <div className="px-4 py-1 rounded-full bg-gradient-to-r from-[#e5a93c] to-[#ff5500] border-2 border-white text-white font-display font-black text-lg uppercase shadow">
+                ¡PUNTOS x{multiplier}!
+              </div>
+            )}
+
+            {phase === 'PLAYING' && !isTimeUp && !isDrumrolling && (
               <div
-                className={`px-6 py-1.5 rounded-full font-display font-black text-2xl uppercase tracking-wider border-2 shadow-md ${
+                className={`px-6 py-1 rounded-full font-display font-black text-2xl uppercase tracking-wider border-2 shadow-md ${
                   smoothRemainingSec <= 5
                     ? 'bg-[#ff5500] border-white text-white animate-bounce'
                     : 'bg-[#005566] border-[#008296] text-white'
@@ -333,21 +416,35 @@ export default function MobilePlayerPage() {
               </div>
             )}
 
-            {phase === 'PLAYING' && isTimeUp && (
-              <div className="px-6 py-1.5 rounded-full bg-[#ff5500] border-2 border-white text-white font-display font-black text-2xl uppercase tracking-wider shadow-lg flex items-center gap-2">
+            {isDrumrolling && (
+              <div className="px-6 py-1 rounded-full bg-[#005566] border-2 border-[#e5a93c] text-[#e5a93c] font-display font-black text-2xl uppercase tracking-wider shadow-lg animate-drumroll">
+                REVELANDO EN {drumrollSec}...
+              </div>
+            )}
+
+            {phase === 'PLAYING' && isTimeUp && !isDrumrolling && (
+              <div className="px-6 py-1 rounded-full bg-[#ff5500] border-2 border-white text-white font-display font-black text-2xl uppercase tracking-wider shadow-lg flex items-center gap-2">
                 <Lock className="w-5 h-5" /> ¡TIEMPO CERRADO!
               </div>
             )}
 
             {phase === 'REVEALED' && (
-              <div className="px-6 py-1.5 rounded-full bg-[#008296] border-2 border-[#e5a93c] text-white font-display font-black text-2xl uppercase tracking-wider shadow-lg">
+              <div className="px-6 py-1 rounded-full bg-[#008296] border-2 border-[#e5a93c] text-white font-display font-black text-2xl uppercase tracking-wider shadow-lg">
                 {round.correctName}
               </div>
             )}
           </div>
 
           {/* Synchronized Distorted Face on Mobile */}
-          <div className="relative w-48 h-48 sm:w-56 sm:h-56 rounded-3xl overflow-hidden border-4 border-[#008296] bg-white p-1.5 shadow-xl">
+          <div
+            className={`relative w-44 h-44 sm:w-52 sm:h-52 rounded-3xl overflow-hidden border-4 bg-white p-1.5 shadow-xl ${
+              isDrumrolling
+                ? 'border-[#e5a93c] animate-drumroll'
+                : multiplier > 1
+                ? 'border-[#e5a93c]'
+                : 'border-[#008296]'
+            }`}
+          >
             <div className="relative w-full h-full rounded-2xl overflow-hidden bg-[#003d4a]">
               <DistortedCanvas
                 imageSrc={round.imageData}
@@ -356,6 +453,13 @@ export default function MobilePlayerPage() {
                 isRevealed={phase === 'REVEALED'}
                 className="w-full h-full object-cover"
               />
+              {isDrumrolling && (
+                <div className="absolute inset-0 bg-black/45 flex items-center justify-center">
+                  <span className="font-display text-7xl font-black text-[#e5a93c] animate-ping">
+                    {drumrollSec}
+                  </span>
+                </div>
+              )}
               {phase === 'PLAYING' && !isTimeUp && (
                 <div className="absolute bottom-0 left-0 right-0 h-2 bg-black/50">
                   <div
@@ -369,9 +473,17 @@ export default function MobilePlayerPage() {
             </div>
           </div>
 
+          {/* Live Hint Pill on Mobile if Director turned it on */}
+          {round.showHintOnTv && round.hintText && (
+            <div className="w-full bg-[#005566] border-l-4 border-[#e5a93c] text-white px-3.5 py-2 rounded-xl shadow flex items-center gap-2 text-xs">
+              <Lightbulb className="w-4 h-4 text-[#e5a93c] shrink-0" />
+              <span className="font-bold truncate">{round.hintText}</span>
+            </div>
+          )}
+
           {/* 1) PLAYING, Timer Running & Not Answered Yet -> Show 4 Big Option Buttons */}
           {phase === 'PLAYING' && !isTimeUp && !myCurrentRoundAnswer && (
-            <div className="grid grid-cols-1 gap-2.5 w-full mt-1">
+            <div className="grid grid-cols-1 gap-2 w-full mt-0.5">
               {round.options?.map((optionText, idx) => {
                 const style = OPTION_STYLES[idx % 4];
                 return (
@@ -379,9 +491,9 @@ export default function MobilePlayerPage() {
                     key={idx}
                     disabled={submitting}
                     onClick={() => handleSelectOption(idx)}
-                    className={`w-full flex items-center gap-3.5 p-3.5 rounded-2xl ${style.bg} border-b-4 ${style.border} text-left shadow-lg active:scale-95 transition-transform`}
+                    className={`w-full flex items-center gap-3 p-3 rounded-2xl ${style.bg} border-b-4 ${style.border} text-left shadow-lg active:scale-95 transition-transform`}
                   >
-                    <span className="w-9 h-9 rounded-xl bg-black/20 flex items-center justify-center font-display font-black text-2xl text-white shrink-0">
+                    <span className="w-8 h-8 rounded-xl bg-black/20 flex items-center justify-center font-display font-black text-xl text-white shrink-0">
                       {style.label}
                     </span>
                     <span className="font-display font-black text-white text-2xl uppercase tracking-wide leading-tight">
@@ -393,21 +505,40 @@ export default function MobilePlayerPage() {
             </div>
           )}
 
-          {/* 2) PLAYING & Player Already Voted (Waiting for timer & Admin manual reveal) */}
+          {/* 2) PLAYING & Player Already Voted (Waiting for timer & Admin manual reveal) + Emoji Reactions */}
           {phase === 'PLAYING' && myCurrentRoundAnswer && (
-            <div className="w-full bg-white/95 border-4 border-[#008296] rounded-3xl p-5 text-center shadow-xl">
-              <Clock className="w-10 h-10 text-[#008296] mx-auto mb-1.5 animate-pulse" />
-              <div className="font-display font-black text-2xl uppercase text-[#005566]">
-                ¡VOTO REGISTRADO!
+            <div className="w-full space-y-2.5">
+              <div className="w-full bg-white/95 border-4 border-[#008296] rounded-3xl p-4 text-center shadow-xl">
+                <Clock className="w-8 h-8 text-[#008296] mx-auto mb-1 animate-pulse" />
+                <div className="font-display font-black text-2xl uppercase text-[#005566]">
+                  ¡VOTO REGISTRADO EN {(myCurrentRoundAnswer.elapsedMs / 1000).toFixed(2)}s!
+                </div>
+                <div className="text-[#005566] text-sm font-bold">
+                  Elegiste:{' '}
+                  <span className="text-[#008296] font-extrabold uppercase">
+                    {round.options?.[myCurrentRoundAnswer.optionIndex]}
+                  </span>
+                </div>
               </div>
-              <div className="text-[#005566] text-sm font-bold mt-1">
-                Tu elección:{' '}
-                <span className="text-[#008296] font-extrabold uppercase">
-                  {round.options?.[myCurrentRoundAnswer.optionIndex]}
-                </span>
-              </div>
-              <div className="mt-2 px-3 py-1 rounded-full bg-[#f6f0e6] inline-block text-xs text-[#005566] font-extrabold">
-                Atento a la pantalla para la revelación...
+
+              {/* Emoji Reaction Bar while waiting for reveal */}
+              <div className="w-full bg-white/95 border-2 border-[#008296]/30 rounded-2xl p-2.5 text-center shadow">
+                <div className="text-[10px] font-extrabold uppercase tracking-wider text-[#008296] mb-1.5">
+                  REACCIONA EN LA PANTALLA TV MIENTRAS ESPERAS
+                </div>
+                <div className="flex items-center justify-around">
+                  {REACTION_EMOJIS.map((em) => (
+                    <button
+                      key={em}
+                      type="button"
+                      disabled={reactionCooldown}
+                      onClick={() => handleSendReaction(em)}
+                      className="text-2xl p-1.5 rounded-xl bg-[#f6f0e6] active:scale-125 transition-transform"
+                    >
+                      {em}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -425,36 +556,63 @@ export default function MobilePlayerPage() {
             </div>
           )}
 
-          {/* 4) REVEALED: Admin manually released the result! Now show on phones whether they won */}
+          {/* 4) REVEALED: Admin manually released the result! */}
           {phase === 'REVEALED' && (
-            <div
-              className={`w-full rounded-3xl p-5 text-center border-4 shadow-2xl ${
-                myCurrentRoundAnswer?.isCorrect
-                  ? 'bg-[#005566] border-[#84bd00] text-white'
-                  : 'bg-white/95 border-[#ff5500] text-[#005566]'
-              }`}
-            >
-              {myCurrentRoundAnswer?.isCorrect ? (
-                <>
-                  <CheckCircle2 className="w-12 h-12 text-[#84bd00] mx-auto mb-1" />
-                  <div className="font-display font-black text-3xl uppercase">
-                    ¡ACERTASTE!
-                  </div>
-                  <div className="font-display font-black text-4xl text-[#e5a93c] mt-0.5">
-                    +{myCurrentRoundAnswer.pointsEarned} PTS
-                  </div>
-                </>
-              ) : (
-                <>
-                  <XCircle className="w-12 h-12 text-[#ff5500] mx-auto mb-1" />
-                  <div className="font-display font-black text-3xl uppercase text-[#ff5500]">
-                    {myCurrentRoundAnswer ? '¡NO ERA!' : '¡SIN RESPUESTA!'}
-                  </div>
-                  <div className="text-[#005566] text-base font-extrabold mt-1">
-                    Respuesta: <span className="text-[#008296] uppercase">{round.correctName}</span>
-                  </div>
-                </>
-              )}
+            <div className="w-full space-y-2.5">
+              <div
+                className={`w-full rounded-3xl p-4 text-center border-4 shadow-2xl ${
+                  myCurrentRoundAnswer?.isCorrect
+                    ? 'bg-[#005566] border-[#84bd00] text-white'
+                    : 'bg-white/95 border-[#ff5500] text-[#005566]'
+                }`}
+              >
+                {myCurrentRoundAnswer?.isCorrect ? (
+                  <>
+                    <CheckCircle2 className="w-10 h-10 text-[#84bd00] mx-auto mb-1" />
+                    <div className="font-display font-black text-3xl uppercase">
+                      ¡ACERTASTE!
+                    </div>
+                    <div className="font-display font-black text-4xl text-[#e5a93c]">
+                      +{myCurrentRoundAnswer.pointsEarned} PTS
+                    </div>
+                    {isFastestWinner && (
+                      <div className="mt-1.5 inline-flex items-center gap-1 px-3 py-0.5 rounded-full bg-[#e5a93c] text-[#003d4a] font-extrabold text-xs uppercase">
+                        <Zap className="w-3.5 h-3.5 fill-current" /> ¡FUISTE EL MÁS RÁPIDO DE LA RONDA!
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-10 h-10 text-[#ff5500] mx-auto mb-1" />
+                    <div className="font-display font-black text-3xl uppercase text-[#ff5500]">
+                      {myCurrentRoundAnswer ? '¡NO ERA!' : '¡SIN RESPUESTA!'}
+                    </div>
+                    <div className="text-[#005566] text-base font-extrabold mt-0.5">
+                      Era:{' '}
+                      <span className="text-[#008296] uppercase">
+                        {round.correctName}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Emoji Reaction Bar after reveal */}
+              <div className="w-full bg-white/95 border-2 border-[#008296]/30 rounded-2xl p-2.5 text-center shadow">
+                <div className="flex items-center justify-around">
+                  {REACTION_EMOJIS.map((em) => (
+                    <button
+                      key={em}
+                      type="button"
+                      disabled={reactionCooldown}
+                      onClick={() => handleSendReaction(em)}
+                      className="text-2xl p-1.5 rounded-xl bg-[#f6f0e6] active:scale-125 transition-transform"
+                    >
+                      {em}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -462,7 +620,7 @@ export default function MobilePlayerPage() {
 
       {/* ================= RANKING STATE ================= */}
       {phase === 'RANKING' && (
-        <div className="flex-1 flex flex-col items-center justify-center text-center my-6">
+        <div className="flex-1 flex flex-col items-center justify-center text-center my-6 gap-4">
           <div className="w-full bg-white/95 border-4 border-[#e5a93c] rounded-3xl p-6 shadow-2xl">
             <Trophy className="w-14 h-14 text-[#e5a93c] mx-auto mb-2" />
             <div className="text-xs font-extrabold uppercase tracking-widest text-[#008296]">
@@ -473,6 +631,22 @@ export default function MobilePlayerPage() {
             </div>
             <div className="font-display text-3xl font-black text-[#008296]">
               {me.score.toLocaleString()} PTS
+            </div>
+          </div>
+
+          <div className="w-full bg-white/95 border-2 border-[#008296]/30 rounded-2xl p-3 shadow-lg">
+            <div className="flex items-center justify-around">
+              {REACTION_EMOJIS.map((em) => (
+                <button
+                  key={em}
+                  type="button"
+                  disabled={reactionCooldown}
+                  onClick={() => handleSendReaction(em)}
+                  className="text-2xl p-2 rounded-xl bg-[#f6f0e6] active:scale-125 transition-transform"
+                >
+                  {em}
+                </button>
+              ))}
             </div>
           </div>
         </div>

@@ -10,10 +10,19 @@ export const dynamic = 'force-dynamic';
 
 function buildClientPayload(state, role, playerId) {
   const now = Date.now();
-  // IMPORTANT: We NEVER auto-reveal when the timer finishes!
-  // Only the Admin can manually trigger REVEALED to build maximum TV suspense.
-  const currentPhase = state.phase;
+  let currentPhase = state.phase;
   let roundStatus = { progress: 0, remainingMs: 0, elapsedMs: 0, isFinished: false };
+
+  // Check if drumroll countdown finished -> auto-complete the manual reveal!
+  let drumrollAutoCompleted = false;
+  if (
+    currentPhase === 'PLAYING' &&
+    state.activeRound?.drumrollStartedAt &&
+    now - state.activeRound.drumrollStartedAt >= 3000
+  ) {
+    currentPhase = 'REVEALED';
+    drumrollAutoCompleted = true;
+  }
 
   if (state.activeRound) {
     roundStatus = computeRoundProgress(state.activeRound, now);
@@ -23,27 +32,80 @@ function buildClientPayload(state, role, playerId) {
     ? state.photos.find((p) => p.id === state.activeRound.photoId) || null
     : null;
 
-  const playersList = Object.values(state.players || {}).sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    return (a.joinedAt || 0) - (b.joinedAt || 0);
-  });
+  const isRevealed = currentPhase === 'REVEALED';
+  const isTimeUp = currentPhase === 'PLAYING' && roundStatus.isFinished;
 
+  // Compute leaderboard (taking care not to leak unrevealed current-round points on TV/player before reveal)
+  const rawPlayersList = Object.values(state.players || {});
+  const playersList = rawPlayersList
+    .map((p) => {
+      const hasCurrentRoundPoints =
+        !isRevealed &&
+        state.activeRound &&
+        p.lastAnswer?.roundId === state.activeRound.roundId;
+      const visibleScore =
+        hasCurrentRoundPoints && role !== 'admin'
+          ? Math.max(0, p.score - (p.lastAnswer?.pointsEarned || 0))
+          : p.score;
+      return {
+        ...p,
+        visibleScore,
+      };
+    })
+    .sort((a, b) => {
+      if (b.visibleScore !== a.visibleScore) return b.visibleScore - a.visibleScore;
+      return (a.joinedAt || 0) - (b.joinedAt || 0);
+    });
+
+  // Compute vote counts, recent responders feed, and fastest correct winner for current round
   const voteCounts = [0, 0, 0, 0];
   let totalVotes = 0;
+  const roundResponders = [];
+  let fastestCorrect = null;
+
   if (state.activeRound) {
-    for (const p of playersList) {
+    for (const p of rawPlayersList) {
       if (p.lastAnswer && p.lastAnswer.roundId === state.activeRound.roundId) {
         const idx = p.lastAnswer.optionIndex;
         if (idx >= 0 && idx < 4) {
           voteCounts[idx]++;
           totalVotes++;
         }
+        roundResponders.push({
+          id: p.id,
+          name: p.name,
+          avatarColor: p.avatarColor,
+          elapsedMs: p.lastAnswer.elapsedMs,
+          answeredAt: p.lastAnswer.answeredAt,
+        });
+
+        if (p.lastAnswer.isCorrect) {
+          if (!fastestCorrect || p.lastAnswer.elapsedMs < fastestCorrect.elapsedMs) {
+            fastestCorrect = {
+              id: p.id,
+              name: p.name,
+              avatarColor: p.avatarColor,
+              elapsedMs: p.lastAnswer.elapsedMs,
+              pointsEarned: p.lastAnswer.pointsEarned,
+            };
+          }
+        }
       }
     }
   }
 
-  const isRevealed = currentPhase === 'REVEALED';
-  const isTimeUp = currentPhase === 'PLAYING' && roundStatus.isFinished;
+  // Sort recent responders newest first for live TV toast feed
+  roundResponders.sort((a, b) => b.answeredAt - a.answeredAt);
+
+  // Recent emoji reactions (last 6 seconds)
+  const recentReactions = (state.reactions || []).filter(
+    (r) => now - r.createdAt < 6000
+  );
+
+  const drumrollRemainingMs =
+    currentPhase === 'PLAYING' && state.activeRound?.drumrollStartedAt
+      ? Math.max(0, 3000 - (now - state.activeRound.drumrollStartedAt))
+      : 0;
 
   const basePayload = {
     version: state.version,
@@ -51,11 +113,12 @@ function buildClientPayload(state, role, playerId) {
     phase: currentPhase,
     settings: state.settings,
     playerCount: playersList.length,
+    reactions: recentReactions,
     leaderboard: playersList.slice(0, 20).map((p, idx) => ({
       id: p.id,
       name: p.name,
       avatarColor: p.avatarColor,
-      score: p.score,
+      score: p.visibleScore,
       streak: p.streak || 0,
       rank: idx + 1,
       hasAnsweredCurrentRound:
@@ -70,7 +133,6 @@ function buildClientPayload(state, role, playerId) {
           roundId: state.activeRound.roundId,
           photoId: state.activeRound.photoId,
           imageData: activePhoto ? activePhoto.imageData : null,
-          // Never leak correctName or correctOptionIndex to TV or Players until Admin clicks REVEAL_NOW
           correctName: isRevealed || role === 'admin' ? activePhoto?.name : null,
           options: state.activeRound.options,
           correctOptionIndex:
@@ -78,11 +140,22 @@ function buildClientPayload(state, role, playerId) {
           durationMs: state.activeRound.durationMs,
           isPaused: state.activeRound.isPaused,
           effectType: state.activeRound.effectType,
+          pointsMultiplier: state.activeRound.pointsMultiplier || 1,
+          manualProgress: state.activeRound.manualProgress,
           progress: isRevealed ? 1 : roundStatus.progress,
           remainingMs: isRevealed ? 0 : roundStatus.remainingMs,
           elapsedMs: roundStatus.elapsedMs,
           isTimeUp,
-          // Allow showing audience vote distribution on TV if Admin enables "Audience Poll" during Time Up, or when Revealed
+          // Drumroll 3..2..1 state
+          isDrumrolling: drumrollRemainingMs > 0,
+          drumrollRemainingMs,
+          // Lower-third Hint
+          hintText: state.activeRound.hintText || activePhoto?.hint || '',
+          showHintOnTv: Boolean(state.activeRound.showHintOnTv),
+          // Live responders toast feed (does not reveal which option they picked)
+          recentResponders: roundResponders.slice(0, 5),
+          // Speed Winner Spotlight (only sent when revealed or to admin)
+          fastestWinner: isRevealed || role === 'admin' ? fastestCorrect : null,
           showAudienceVotes: Boolean(state.activeRound.showAudienceVotes),
           voteCounts:
             isRevealed || role === 'admin' || state.activeRound.showAudienceVotes
@@ -101,7 +174,6 @@ function buildClientPayload(state, role, playerId) {
   if (playerId && state.players[playerId]) {
     const me = state.players[playerId];
     const myRank = playersList.findIndex((p) => p.id === playerId) + 1;
-    // IMPORTANT: Do NOT reveal `isCorrect` or `pointsEarned` to the mobile player until Admin reveals!
     const sanitizedLastAnswer = me.lastAnswer
       ? {
           roundId: me.lastAnswer.roundId,
@@ -115,19 +187,18 @@ function buildClientPayload(state, role, playerId) {
 
     basePayload.me = {
       ...me,
-      // Hide current round points from player's visible total score until Admin reveals
       score:
         !isRevealed &&
         state.activeRound &&
         me.lastAnswer?.roundId === state.activeRound.roundId
-          ? me.score - (me.lastAnswer.pointsEarned || 0)
+          ? Math.max(0, me.score - (me.lastAnswer.pointsEarned || 0))
           : me.score,
       lastAnswer: sanitizedLastAnswer,
       rank: myRank,
     };
   }
 
-  return { payload: basePayload };
+  return { payload: basePayload, drumrollAutoCompleted };
 }
 
 export async function GET(request) {
@@ -136,7 +207,17 @@ export async function GET(request) {
   const playerId = searchParams.get('playerId') || null;
 
   const state = await getGameState();
-  const { payload } = buildClientPayload(state, role, playerId);
+  const { payload, drumrollAutoCompleted } = buildClientPayload(state, role, playerId);
+
+  if (drumrollAutoCompleted) {
+    state.phase = 'REVEALED';
+    if (state.activeRound) {
+      state.activeRound.drumrollStartedAt = null;
+      const photo = state.photos.find((p) => p.id === state.activeRound.photoId);
+      if (photo) photo.played = true;
+    }
+    await saveGameState(state);
+  }
 
   return NextResponse.json(payload);
 }
@@ -190,11 +271,13 @@ export async function POST(request) {
 
         const isCorrect = optionIndex === state.activeRound.correctOptionIndex;
         const speedRatio = Math.max(0, Math.min(1, 1 - roundStatus.progress));
+        const multiplier = Number(state.activeRound.pointsMultiplier || 1);
         let pointsEarned = 0;
+
         if (isCorrect) {
-          const basePoints = Math.round(500 + 500 * speedRatio);
+          const basePoints = Math.round((500 + 500 * speedRatio) * multiplier);
           const newStreak = (player.streak || 0) + 1;
-          const streakBonus = Math.min(300, (newStreak - 1) * 50);
+          const streakBonus = Math.min(300, (newStreak - 1) * 50) * multiplier;
           pointsEarned = basePoints + streakBonus;
           player.score = (player.score || 0) + pointsEarned;
           player.streak = newStreak;
@@ -215,6 +298,24 @@ export async function POST(request) {
         break;
       }
 
+      case 'SEND_REACTION': {
+        const { playerId, emoji } = body;
+        const allowedEmojis = ['🔥', '😂', '🤯', '👏', '❤️', '🎉'];
+        if (!allowedEmojis.includes(emoji)) break;
+        const player = state.players[playerId];
+        if (!Array.isArray(state.reactions)) state.reactions = [];
+        state.reactions.push({
+          id: `rx-${now}-${Math.random().toString(36).slice(2, 6)}`,
+          emoji,
+          playerName: player ? player.name : 'Espectador',
+          avatarColor: player ? player.avatarColor : '#008296',
+          createdAt: now,
+          offsetLeft: Math.floor(15 + Math.random() * 70), // % horizontal spread inside reaction lane
+        });
+        await saveGameState(state);
+        break;
+      }
+
       // ================= ADMIN ACTIONS =================
       case 'ADD_PHOTOS_BATCH': {
         const { photos } = body;
@@ -224,6 +325,7 @@ export async function POST(request) {
             state.photos.push({
               id: `photo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
               name: (item.name || 'Personaje Misterioso').trim(),
+              hint: (item.hint || '').trim(),
               imageData: item.imageData,
               customDistractors: Array.isArray(item.customDistractors)
                 ? item.customDistractors.filter(Boolean)
@@ -237,12 +339,16 @@ export async function POST(request) {
       }
 
       case 'UPDATE_PHOTO': {
-        const { photoId, name, customDistractors } = body;
+        const { photoId, name, hint, customDistractors } = body;
         const photo = state.photos.find((p) => p.id === photoId);
         if (photo) {
           if (typeof name === 'string' && name.trim()) photo.name = name.trim();
+          if (typeof hint === 'string') photo.hint = hint.trim();
           if (Array.isArray(customDistractors)) {
             photo.customDistractors = customDistractors.map((d) => d.trim()).filter(Boolean);
+          }
+          if (state.activeRound?.photoId === photoId && typeof hint === 'string') {
+            state.activeRound.hintText = hint.trim();
           }
           await saveGameState(state);
         }
@@ -269,7 +375,7 @@ export async function POST(request) {
       }
 
       case 'START_ROUND': {
-        const { photoId, durationSeconds, effectType } = body;
+        const { photoId, durationSeconds, effectType, pointsMultiplier } = body;
         let targetPhoto = state.photos.find((p) => p.id === photoId);
         if (!targetPhoto) {
           targetPhoto = state.photos.find((p) => !p.played) || state.photos[0];
@@ -280,6 +386,7 @@ export async function POST(request) {
 
         const durationSec = Number(durationSeconds || state.settings.timerDuration || 15);
         const chosenEffect = effectType || state.settings.effectType || 'SWIRL_BLUR';
+        const mult = Number(pointsMultiplier || state.settings.pointsMultiplier || 1);
         const { options, correctOptionIndex } = generateOptionsForPhoto(targetPhoto, state.photos);
 
         state.activeRound = {
@@ -293,8 +400,12 @@ export async function POST(request) {
           pausedAt: null,
           totalPausedMs: 0,
           effectType: chosenEffect,
+          pointsMultiplier: mult,
           manualProgress: null,
           showAudienceVotes: false,
+          hintText: targetPhoto.hint || '',
+          showHintOnTv: false,
+          drumrollStartedAt: null,
         };
         state.phase = 'PLAYING';
         await saveGameState(state);
@@ -320,8 +431,47 @@ export async function POST(request) {
         break;
       }
 
+      case 'SET_MANUAL_PROGRESS': {
+        // Allows the Director to manually scrub clarity from 0% to 100% live!
+        const { progress } = body;
+        if (state.activeRound) {
+          if (progress === null || typeof progress === 'undefined') {
+            state.activeRound.manualProgress = null;
+          } else {
+            state.activeRound.manualProgress = Math.max(0, Math.min(1, Number(progress)));
+          }
+          await saveGameState(state);
+        }
+        break;
+      }
+
+      case 'TOGGLE_HINT': {
+        const { customHintText } = body;
+        if (state.activeRound) {
+          if (typeof customHintText === 'string') {
+            state.activeRound.hintText = customHintText.trim();
+          }
+          state.activeRound.showHintOnTv = !state.activeRound.showHintOnTv;
+          await saveGameState(state);
+        }
+        break;
+      }
+
+      case 'UPDATE_LIVE_HINT': {
+        const { hintText, showHintOnTv } = body;
+        if (state.activeRound) {
+          if (typeof hintText === 'string') {
+            state.activeRound.hintText = hintText.trim();
+          }
+          if (typeof showHintOnTv === 'boolean') {
+            state.activeRound.showHintOnTv = showHintOnTv;
+          }
+          await saveGameState(state);
+        }
+        break;
+      }
+
       case 'TOGGLE_AUDIENCE_VOTES': {
-        // Lets the Admin show % of votes per option on TV BEFORE revealing which one is correct!
         if (state.activeRound) {
           state.activeRound.showAudienceVotes = !state.activeRound.showAudienceVotes;
           await saveGameState(state);
@@ -329,8 +479,18 @@ export async function POST(request) {
         break;
       }
 
+      case 'START_DRUMROLL_REVEAL': {
+        // Starts a 3-second dramatic drumroll countdown on TV & phones before automatically transitioning to REVEALED
+        if (state.activeRound && state.phase === 'PLAYING') {
+          state.activeRound.drumrollStartedAt = now;
+          await saveGameState(state);
+        }
+        break;
+      }
+
       case 'REVEAL_NOW': {
         if (state.activeRound) {
+          state.activeRound.drumrollStartedAt = null;
           state.phase = 'REVEALED';
           const photo = state.photos.find((p) => p.id === state.activeRound.photoId);
           if (photo) photo.played = true;
@@ -344,6 +504,7 @@ export async function POST(request) {
         if (['LOBBY', 'PLAYING', 'REVEALED', 'RANKING'].includes(phase)) {
           state.phase = phase;
           if (phase === 'REVEALED' && state.activeRound) {
+            state.activeRound.drumrollStartedAt = null;
             const photo = state.photos.find((p) => p.id === state.activeRound.photoId);
             if (photo) photo.played = true;
           }
@@ -359,8 +520,13 @@ export async function POST(request) {
             ...state.settings,
             ...settings,
           };
-          if (state.activeRound && settings.effectType) {
-            state.activeRound.effectType = settings.effectType;
+          if (state.activeRound) {
+            if (settings.effectType) {
+              state.activeRound.effectType = settings.effectType;
+            }
+            if (settings.pointsMultiplier) {
+              state.activeRound.pointsMultiplier = Number(settings.pointsMultiplier);
+            }
           }
           await saveGameState(state);
         }
