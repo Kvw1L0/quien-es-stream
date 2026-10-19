@@ -8,7 +8,6 @@ import {
   Users,
   Flame,
   CheckCircle2,
-  Lock,
   Zap,
   Lightbulb,
   Sparkles,
@@ -42,6 +41,18 @@ const OPTION_STYLES = [
     border: 'border-[#ff5500]/30',
   },
 ];
+
+// Deterministic horizontal position for floating responder names
+function getResponderPosition(id = '') {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) % 1000;
+  }
+  const side = hash % 2 === 0 ? 'left' : 'right';
+  const offsetPct = 4 + (hash % 14); // 4% to 17% from the left or right edge
+  const topPct = 22 + ((hash * 7) % 48); // 22% to 70% vertical position
+  return { side, offsetPct, topPct };
+}
 
 export default function TvBroadcastPage() {
   const [gameState, setGameState] = useState(null);
@@ -220,16 +231,12 @@ export default function TvBroadcastPage() {
   const isDrumrolling = phase === 'PLAYING' && round?.isDrumrolling && drumrollSec > 0;
   const multiplier = round?.pointsMultiplier || gameState.settings?.pointsMultiplier || 1;
   const reactions = gameState.reactions || [];
-
-  // IMPORTANT: The 4 alternatives & percentages are ONLY displayed on the big TV screen
-  // when the Admin explicitly activates `showAudienceVotes`!
-  // Otherwise, the photo takes center stage in giant format.
   const showOptionsPanelOnTv = Boolean(round?.showAudienceVotes);
 
   return (
     <main
       onClick={() => soundFX.init()}
-      className={`relative min-h-screen w-screen overflow-hidden flex flex-col items-center justify-start pt-4 md:pt-6 pb-32 select-none ${
+      className={`relative min-h-screen w-screen overflow-hidden flex flex-col items-center justify-center select-none ${
         chromaMode === 'TRANSPARENT'
           ? 'bg-transparent'
           : chromaMode === 'GREEN'
@@ -245,19 +252,48 @@ export default function TvBroadcastPage() {
         />
       )}
 
-      {/* Live Floating Emoji Reactions Lane (Left side of TV screen) */}
-      <div className="pointer-events-none fixed bottom-28 left-8 z-50 w-56 h-80 overflow-visible">
+      {/* Floating Responder Names in Open Space (NO response times shown, just the name floating!) */}
+      {phase === 'PLAYING' && round?.recentResponders?.length > 0 && (
+        <div className="pointer-events-none fixed inset-0 z-20 overflow-hidden">
+          {round.recentResponders.slice(0, 6).map((resp) => {
+            const pos = getResponderPosition(resp.id);
+            return (
+              <div
+                key={resp.id}
+                style={{
+                  top: `${pos.topPct}%`,
+                  ...(pos.side === 'left'
+                    ? { left: `${pos.offsetPct}%` }
+                    : { right: `${pos.offsetPct}%` }),
+                }}
+                className="absolute flex items-center gap-2.5 px-5 py-2.5 rounded-full bg-white/95 border-2 border-[#008296]/40 text-[#005566] shadow-[0_12px_30px_rgba(0,85,102,0.22)] animate-float"
+              >
+                <span
+                  className="w-3.5 h-3.5 rounded-full shrink-0"
+                  style={{ backgroundColor: resp.avatarColor || '#008296' }}
+                />
+                <span className="font-display font-black text-2xl md:text-3xl uppercase tracking-wide">
+                  {resp.name}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Live Floating Emoji Reactions Lane */}
+      <div className="pointer-events-none fixed bottom-28 left-8 z-50 w-64 h-96 overflow-visible">
         {reactions.map((rx) => (
           <div
             key={rx.id}
             style={{ left: `${rx.offsetLeft || 30}%` }}
             className="absolute bottom-0 flex flex-col items-center animate-emoji-float"
           >
-            <span className="text-5xl drop-shadow-[0_6px_12px_rgba(0,0,0,0.3)]">
+            <span className="text-6xl drop-shadow-[0_6px_12px_rgba(0,0,0,0.3)]">
               {rx.emoji}
             </span>
             <span
-              className="mt-0.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold text-white shadow-md whitespace-nowrap"
+              className="mt-1 px-3 py-0.5 rounded-full text-xs font-extrabold text-white shadow-md whitespace-nowrap"
               style={{ backgroundColor: rx.avatarColor || '#008296' }}
             >
               {rx.playerName}
@@ -268,52 +304,52 @@ export default function TvBroadcastPage() {
 
       {/* Floating QR Widget */}
       {showQr && phase !== 'LOBBY' && joinUrl && (
-        <div className="fixed bottom-28 right-7 z-40 flex items-center gap-3.5 bg-white/95 backdrop-blur-md border-2 border-[#008296]/30 p-3 rounded-3xl shadow-[0_16px_40px_rgba(0,85,102,0.22)]">
+        <div className="fixed bottom-28 right-7 z-40 flex items-center gap-4 bg-white/95 backdrop-blur-md border-2 border-[#008296]/30 p-3.5 rounded-3xl shadow-[0_16px_40px_rgba(0,85,102,0.22)]">
           <div className="bg-white p-1.5 rounded-2xl border border-[#008296]/15">
-            <QRCodeSVG value={joinUrl} size={84} fgColor="#005566" level="M" />
+            <QRCodeSVG value={joinUrl} size={96} fgColor="#005566" level="M" />
           </div>
           <div className="pr-3">
-            <div className="flex items-center gap-1.5 text-[#008296] font-extrabold text-xs uppercase tracking-wider">
-              <Users className="w-3.5 h-3.5" />
+            <div className="flex items-center gap-1.5 text-[#008296] font-extrabold text-sm uppercase tracking-wider">
+              <Users className="w-4 h-4" />
               <span>{gameState.playerCount || 0} JUGANDO</span>
             </div>
-            <p className="font-display text-[#005566] font-black text-2xl uppercase tracking-wide leading-none mt-0.5">
+            <p className="font-display text-[#005566] font-black text-3xl uppercase tracking-wide leading-none mt-0.5">
               ESCANEA Y JUEGA
             </p>
           </div>
         </div>
       )}
 
-      {/* ================= PHASE 1: LOBBY ================= */}
+      {/* ================= PHASE 1: LOBBY (Exact Center + 25% Larger) ================= */}
       {phase === 'LOBBY' && (
-        <div className="z-10 flex flex-col items-center justify-center text-center px-6 max-w-4xl w-full mt-4">
-          <div className="inline-flex items-center gap-2.5 px-6 py-2 rounded-full bg-[#008296] text-white font-extrabold text-base tracking-wider uppercase shadow-lg mb-4">
-            <Users className="w-5 h-5" />
+        <div className="z-10 flex flex-col items-center justify-center text-center px-6 max-w-5xl w-full">
+          <div className="inline-flex items-center gap-3 px-8 py-2.5 rounded-full bg-[#008296] text-white font-extrabold text-xl tracking-wider uppercase shadow-lg mb-5">
+            <Users className="w-6 h-6" />
             <span>{gameState.playerCount || 0} JUGADORES CONECTADOS</span>
           </div>
 
-          <h1 className="font-display text-7xl md:text-8xl font-black uppercase tracking-wide text-[#005566] drop-shadow-sm mb-6 leading-none">
-            ¿QUIÉN ES EL PERSONAJE?
+          <h1 className="font-display text-8xl md:text-9xl font-black uppercase tracking-wide text-[#005566] drop-shadow-sm mb-8 leading-none">
+            ¿QUIÉN ES?
           </h1>
 
           {joinUrl && (
-            <div className="bg-white p-6 rounded-[2.5rem] shadow-[0_20px_60px_rgba(0,85,102,0.25)] border-4 border-[#008296] animate-float">
-              <QRCodeSVG value={joinUrl} size={240} fgColor="#005566" level="M" />
+            <div className="bg-white p-8 rounded-[3rem] shadow-[0_24px_70px_rgba(0,85,102,0.28)] border-4 border-[#008296] animate-float">
+              <QRCodeSVG value={joinUrl} size={300} fgColor="#005566" level="M" />
             </div>
           )}
 
           {gameState.leaderboard?.length > 0 && (
-            <div className="mt-7 flex flex-wrap items-center justify-center gap-2.5 max-w-3xl">
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3 max-w-4xl">
               {gameState.leaderboard.slice(0, 14).map((p) => (
                 <div
                   key={p.id}
-                  className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/95 border-2 border-[#008296]/25 shadow-md"
+                  className="flex items-center gap-2.5 px-5 py-2 rounded-full bg-white/95 border-2 border-[#008296]/25 shadow-md"
                 >
                   <span
-                    className="w-3 h-3 rounded-full"
+                    className="w-3.5 h-3.5 rounded-full"
                     style={{ backgroundColor: p.avatarColor || '#008296' }}
                   />
-                  <span className="font-extrabold text-[#005566] text-base">
+                  <span className="font-extrabold text-[#005566] text-xl">
                     {p.name}
                   </span>
                 </div>
@@ -323,79 +359,73 @@ export default function TvBroadcastPage() {
         </div>
       )}
 
-      {/* ================= PHASE 2 & 3: PLAYING, TIME-UP SUSPENSE & REVEALED ================= */}
+      {/* ================= PHASE 2 & 3: PLAYING & REVEALED (Exact Center + 25% Larger + Zero Resize when Options Appear) ================= */}
       {(phase === 'PLAYING' || phase === 'REVEALED') && round && (
-        <div className="z-10 flex flex-col items-center w-full max-w-7xl px-6">
-          {/* TOP DEDICATED TELEVISION HEADER BANNER (Separated above portrait) */}
-          <div className="w-full flex flex-wrap items-center justify-center gap-4 mb-3 min-h-[70px]">
-            {/* x2 / x3 Golden Multiplier Badge */}
+        <div className="z-10 flex flex-col items-center justify-center w-full max-w-[1600px] px-6">
+          {/* TOP DEDICATED TELEVISION HEADER BANNER
+              Always says "¿QUIÉN ES?" during PLAYING (even when timer reaches 0!),
+              until the character name is revealed! */}
+          <div className="w-full flex flex-wrap items-center justify-center gap-5 mb-5 min-h-[88px]">
             {multiplier > 1 && (
-              <div className="flex items-center gap-2 px-5 py-2 rounded-3xl bg-gradient-to-r from-[#e5a93c] via-[#ff5500] to-[#e5a93c] border-4 border-white text-white shadow-xl animate-bounce">
-                <Sparkles className="w-6 h-6 fill-white" />
-                <span className="font-display text-3xl md:text-4xl font-black uppercase tracking-wider">
-                  ¡RONDA PUNTOS x{multiplier}!
+              <div className="flex items-center gap-2.5 px-7 py-3 rounded-3xl bg-gradient-to-r from-[#e5a93c] via-[#ff5500] to-[#e5a93c] border-4 border-white text-white shadow-xl animate-bounce">
+                <Sparkles className="w-7 h-7 fill-white" />
+                <span className="font-display text-4xl md:text-5xl font-black uppercase tracking-wider">
+                  ¡PUNTOS x{multiplier}!
                 </span>
               </div>
             )}
 
-            {phase === 'PLAYING' && !isTimeUp && !isDrumrolling && (
-              <div className="flex items-center gap-5 px-8 py-2 rounded-3xl bg-white/95 border-4 border-[#008296] shadow-[0_12px_35px_rgba(0,85,102,0.18)]">
-                <span className="font-display text-3xl md:text-4xl font-black uppercase tracking-wider text-[#005566]">
+            {phase === 'PLAYING' && !isDrumrolling && (
+              <div className="flex items-center gap-6 px-10 py-3 rounded-3xl bg-white/95 border-4 border-[#008296] shadow-[0_14px_40px_rgba(0,85,102,0.2)]">
+                <span className="font-display text-5xl md:text-6xl font-black uppercase tracking-wider text-[#005566]">
                   ¿QUIÉN ES?
                 </span>
-                <div className="h-8 w-0.5 bg-[#008296]/25" />
-                <div
-                  className={`font-display text-4xl md:text-5xl font-black px-5 py-0.5 rounded-2xl transition-colors ${
-                    smoothRemainingSec <= 5
-                      ? 'bg-[#ff5500] text-white animate-bounce'
-                      : 'bg-[#008296] text-white'
-                  }`}
-                >
-                  {smoothRemainingSec}s
-                </div>
+                {!isTimeUp && (
+                  <>
+                    <div className="h-10 w-0.5 bg-[#008296]/25" />
+                    <div
+                      className={`font-display text-5xl md:text-6xl font-black px-6 py-1 rounded-2xl transition-colors ${
+                        smoothRemainingSec <= 5
+                          ? 'bg-[#ff5500] text-white animate-bounce'
+                          : 'bg-[#008296] text-white'
+                      }`}
+                    >
+                      {smoothRemainingSec}s
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
             {/* 3-2-1 Drumroll Climax Banner */}
             {isDrumrolling && (
-              <div className="flex items-center gap-4 px-10 py-2.5 rounded-3xl bg-[#005566] border-4 border-[#e5a93c] text-white shadow-2xl animate-drumroll">
-                <span className="font-display text-4xl md:text-5xl font-black uppercase tracking-wider text-[#e5a93c]">
-                  REVELANDO EN {drumrollSec}...
+              <div className="flex items-center gap-5 px-12 py-3.5 rounded-3xl bg-[#005566] border-4 border-[#e5a93c] text-white shadow-2xl animate-drumroll">
+                <span className="font-display text-5xl md:text-6xl font-black uppercase tracking-wider text-[#e5a93c]">
+                  ¿QUIÉN ES? {drumrollSec}...
                 </span>
               </div>
             )}
 
-            {/* SUSPENSE STATE: Timer reached 0, waiting for Admin */}
-            {phase === 'PLAYING' && isTimeUp && !isDrumrolling && (
-              <div className="flex items-center gap-4 px-9 py-2.5 rounded-3xl bg-gradient-to-r from-[#ff5500] via-[#e59a24] to-[#ff5500] border-4 border-white text-white shadow-2xl animate-tension-glow">
-                <Lock className="w-8 h-8 stroke-[2.5]" />
-                <span className="font-display text-4xl md:text-5xl font-black uppercase tracking-wider">
-                  ¡TIEMPO CUMPLIDO! ¿QUIÉN ES?
-                </span>
-              </div>
-            )}
-
-            {/* REVEALED STATE: Admin released the answer + Speed Winner Spotlight */}
+            {/* REVEALED STATE: Character Name */}
             {phase === 'REVEALED' && (
-              <div className="flex flex-wrap items-center justify-center gap-4">
-                <div className="flex items-center gap-4 px-9 py-2.5 rounded-3xl bg-gradient-to-r from-[#008296] via-[#006b7d] to-[#008296] border-4 border-[#e5a93c] text-white shadow-[0_15px_45px_rgba(0,85,102,0.35)] animate-float">
-                  <CheckCircle2 className="w-9 h-9 text-[#84bd00] shrink-0 stroke-[2.5]" />
-                  <span className="font-display text-4xl md:text-6xl font-black uppercase tracking-wide">
+              <div className="flex flex-wrap items-center justify-center gap-5">
+                <div className="flex items-center gap-5 px-12 py-3.5 rounded-3xl bg-gradient-to-r from-[#008296] via-[#006b7d] to-[#008296] border-4 border-[#e5a93c] text-white shadow-[0_15px_45px_rgba(0,85,102,0.35)] animate-float">
+                  <CheckCircle2 className="w-11 h-11 text-[#84bd00] shrink-0 stroke-[2.5]" />
+                  <span className="font-display text-5xl md:text-7xl font-black uppercase tracking-wide">
                     {round.correctName}
                   </span>
                 </div>
 
-                {/* Fastest Correct Player Spotlight Card */}
                 {round.fastestWinner && (
-                  <div className="flex items-center gap-3.5 px-6 py-2.5 rounded-3xl bg-white/95 border-4 border-[#e5a93c] shadow-[0_15px_40px_rgba(229,169,60,0.4)] animate-slide-up">
-                    <div className="w-10 h-10 rounded-2xl bg-[#e5a93c] flex items-center justify-center text-[#003d4a] shadow">
-                      <Zap className="w-6 h-6 fill-current" />
+                  <div className="flex items-center gap-4 px-7 py-3 rounded-3xl bg-white/95 border-4 border-[#e5a93c] shadow-[0_15px_40px_rgba(229,169,60,0.4)] animate-slide-up">
+                    <div className="w-12 h-12 rounded-2xl bg-[#e5a93c] flex items-center justify-center text-[#003d4a] shadow">
+                      <Zap className="w-7 h-7 fill-current" />
                     </div>
                     <div className="text-left">
-                      <div className="text-[11px] font-extrabold uppercase tracking-wider text-[#ff5500] leading-none">
-                        MÁS RÁPIDO DE LA RONDA ({(round.fastestWinner.elapsedMs / 1000).toFixed(2)}s)
+                      <div className="text-xs font-extrabold uppercase tracking-wider text-[#ff5500] leading-none">
+                        MÁS RÁPIDO DE LA RONDA
                       </div>
-                      <div className="font-display text-3xl font-black text-[#005566] uppercase leading-tight">
+                      <div className="font-display text-4xl font-black text-[#005566] uppercase leading-tight">
                         {round.fastestWinner.name}{' '}
                         <span className="text-[#84bd00]">
                           +{round.fastestWinner.pointsEarned} PTS
@@ -409,29 +439,26 @@ export default function TvBroadcastPage() {
           </div>
 
           {/* MAIN TELEVISION STAGE:
-              - When `showOptionsPanelOnTv` is FALSE (default): Giant centered portrait occupying maximum screen height!
-              - When `showOptionsPanelOnTv` is TRUE (activated by Admin): Portrait shifts left & live percentage bars slide in on the right! */}
-          <div className="w-full flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-12 transition-all duration-500">
-            {/* Portrait Frame Container */}
-            <div className="relative flex flex-col items-center shrink-0 transition-all duration-500">
+              The Giant Portrait stays at the EXACT SAME 25%-larger size (`580px - 660px`) at all times!
+              When `showOptionsPanelOnTv` is triggered by Admin, the options appear with a fade/slide-up animation
+              without resizing the portrait or any other element! */}
+          <div className="relative flex flex-col lg:flex-row items-center justify-center gap-10 w-full">
+            {/* Fixed-Size Giant Portrait Frame (25% Larger & Never Shrinks!) */}
+            <div className="relative flex flex-col items-center shrink-0">
               <div
-                className={`relative rounded-[2.5rem] overflow-hidden bg-white p-3 shadow-[0_24px_70px_rgba(0,85,102,0.34)] border-4 transition-all duration-500 ${
-                  showOptionsPanelOnTv
-                    ? 'w-[360px] h-[360px] md:w-[410px] md:h-[410px]'
-                    : 'w-[440px] h-[440px] md:w-[530px] md:h-[530px] xl:w-[560px] xl:h-[560px]'
-                } ${
+                className={`relative w-[500px] h-[500px] md:w-[600px] md:h-[600px] xl:w-[650px] xl:h-[650px] rounded-[2.8rem] overflow-hidden bg-white p-3.5 shadow-[0_28px_80px_rgba(0,85,102,0.36)] border-4 ${
                   isDrumrolling
                     ? 'border-[#e5a93c] animate-drumroll'
                     : phase === 'REVEALED'
-                    ? 'border-[#84bd00] scale-[1.01]'
+                    ? 'border-[#84bd00]'
                     : multiplier > 1
-                    ? 'border-[#e5a93c] shadow-[0_0_50px_rgba(229,169,60,0.6)]'
+                    ? 'border-[#e5a93c] shadow-[0_0_55px_rgba(229,169,60,0.6)]'
                     : isTimeUp
                     ? 'border-[#ff5500] animate-tension-glow'
                     : 'border-[#008296]'
                 }`}
               >
-                <div className="relative w-full h-full rounded-[1.8rem] overflow-hidden bg-[#003d4a]">
+                <div className="relative w-full h-full rounded-[2rem] overflow-hidden bg-[#003d4a]">
                   <DistortedCanvas
                     imageSrc={round.imageData}
                     progress={smoothProgress}
@@ -440,7 +467,6 @@ export default function TvBroadcastPage() {
                     className="w-full h-full object-cover"
                   />
 
-                  {/* Big 3..2..1 Drumroll Overlay inside frame */}
                   {isDrumrolling && (
                     <div className="absolute inset-0 bg-black/45 backdrop-blur-[2px] flex items-center justify-center">
                       <span className="font-display text-9xl font-black text-[#e5a93c] drop-shadow-[0_10px_25px_rgba(0,0,0,0.8)] animate-ping">
@@ -449,9 +475,8 @@ export default function TvBroadcastPage() {
                     </div>
                   )}
 
-                  {/* Sleek bottom progress bar inside frame */}
                   {phase === 'PLAYING' && !isTimeUp && (
-                    <div className="absolute bottom-0 left-0 right-0 h-3.5 bg-black/45 backdrop-blur-sm">
+                    <div className="absolute bottom-0 left-0 right-0 h-4 bg-black/45 backdrop-blur-sm">
                       <div
                         className={`h-full transition-none ${
                           smoothRemainingSec <= 5
@@ -467,38 +492,15 @@ export default function TvBroadcastPage() {
                 </div>
               </div>
 
-              {/* Subtle Live Responders Pill Strip under the Giant Portrait when options panel is hidden */}
-              {!showOptionsPanelOnTv && phase === 'PLAYING' && (
-                <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                  <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#005566] text-white font-extrabold text-xs uppercase tracking-wider shadow-md">
-                    <Users className="w-4 h-4 text-[#00b4cc]" />
-                    <span>{round.totalVotes || 0} VOTOS RECIBIDOS</span>
-                  </div>
-
-                  {round.recentResponders?.slice(0, 3).map((resp) => (
-                    <div
-                      key={resp.id}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/95 border border-[#008296]/30 text-[#005566] text-xs font-extrabold shadow-sm animate-slide-up"
-                    >
-                      <Zap className="w-3.5 h-3.5 text-[#e59a24] fill-[#e59a24]" />
-                      <span className="truncate max-w-[100px]">{resp.name}</span>
-                      <span className="text-[#008296] font-black">
-                        {(resp.elapsedMs / 1000).toFixed(1)}s
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
               {/* Lower-Third TV Hint Banner (Zócalo de Pista) */}
               {round.showHintOnTv && round.hintText && (
-                <div className="mt-3 max-w-[520px] w-full bg-[#005566] border-l-8 border-[#e5a93c] text-white px-5 py-2.5 rounded-2xl shadow-xl flex items-center gap-3 animate-slide-up">
-                  <Lightbulb className="w-6 h-6 text-[#e5a93c] shrink-0 fill-[#e5a93c]/20" />
+                <div className="mt-4 max-w-[650px] w-full bg-[#005566] border-l-8 border-[#e5a93c] text-white px-6 py-3.5 rounded-2xl shadow-xl flex items-center gap-4 animate-slide-up">
+                  <Lightbulb className="w-8 h-8 text-[#e5a93c] shrink-0 fill-[#e5a93c]/20" />
                   <div className="text-left">
-                    <span className="block text-[10px] font-extrabold uppercase tracking-widest text-[#e5a93c]">
+                    <span className="block text-xs font-extrabold uppercase tracking-widest text-[#e5a93c]">
                       PISTA EN PANTALLA
                     </span>
-                    <span className="font-bold text-sm md:text-base leading-snug">
+                    <span className="font-bold text-lg md:text-xl leading-snug">
                       {round.hintText}
                     </span>
                   </div>
@@ -506,32 +508,15 @@ export default function TvBroadcastPage() {
               )}
             </div>
 
-            {/* Right Column: 4 Television Broadcast Option Cards + Live Vote Bars
-                ONLY RENDERED WHEN ADMIN ACTIVATES `showAudienceVotes`! */}
+            {/* 4 Television Broadcast Option Cards + Live Vote Bars
+                Appears with `animate-slide-up` when Admin toggles it, WITHOUT changing the size of the portrait! */}
             {showOptionsPanelOnTv && (
-              <div className="flex flex-col gap-3 w-full max-w-xl animate-slide-up">
-                <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-                  <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#005566] text-white font-extrabold text-xs uppercase tracking-wider shadow">
-                    <Users className="w-4 h-4 text-[#00b4cc]" />
+              <div className="flex flex-col gap-4 w-full max-w-2xl animate-slide-up">
+                <div className="flex items-center justify-between px-1">
+                  <div className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full bg-[#005566] text-white font-extrabold text-sm uppercase tracking-wider shadow">
+                    <Users className="w-5 h-5 text-[#00b4cc]" />
                     <span>{round.totalVotes || 0} RESPUESTAS EN VIVO</span>
                   </div>
-
-                  {phase === 'PLAYING' && round.recentResponders?.length > 0 && (
-                    <div className="flex items-center gap-1.5 overflow-hidden">
-                      {round.recentResponders.slice(0, 2).map((resp) => (
-                        <div
-                          key={resp.id}
-                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/95 border border-[#008296]/30 text-[#005566] text-xs font-extrabold shadow-sm animate-slide-up"
-                        >
-                          <Zap className="w-3.5 h-3.5 text-[#e59a24] fill-[#e59a24]" />
-                          <span className="truncate max-w-[95px]">{resp.name}</span>
-                          <span className="text-[#008296] font-black">
-                            {(resp.elapsedMs / 1000).toFixed(1)}s
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
 
                 {round.options?.map((optionText, idx) => {
@@ -552,15 +537,14 @@ export default function TvBroadcastPage() {
                   return (
                     <div
                       key={idx}
-                      className={`relative overflow-hidden rounded-2xl border-3 p-4 transition-all duration-500 ${
+                      className={`relative overflow-hidden rounded-3xl border-3 p-5 transition-colors duration-500 ${
                         isCorrect
-                          ? 'bg-[#005566] border-4 border-[#84bd00] scale-[1.03] shadow-[0_12px_35px_rgba(132,189,0,0.45)] text-white'
+                          ? 'bg-[#005566] border-4 border-[#84bd00] shadow-[0_12px_35px_rgba(132,189,0,0.45)] text-white'
                           : isWrong
-                          ? 'bg-white/60 border-slate-300/60 opacity-50 scale-[0.98] text-[#005566]'
-                          : `bg-white/95 border-2 ${style.border} shadow-[0_8px_25px_rgba(0,85,102,0.12)] text-[#005566]`
+                          ? 'bg-white/60 border-slate-300/60 opacity-50 text-[#005566]'
+                          : `bg-white/95 border-2 ${style.border} shadow-[0_10px_30px_rgba(0,85,102,0.15)] text-[#005566]`
                       }`}
                     >
-                      {/* Live Percentage fill bar */}
                       <div
                         className={`absolute inset-y-0 left-0 transition-all duration-700 ${
                           isCorrect
@@ -570,19 +554,19 @@ export default function TvBroadcastPage() {
                         style={{ width: `${votePercent}%` }}
                       />
 
-                      <div className="relative z-10 flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-4 min-w-0">
+                      <div className="relative z-10 flex items-center justify-between gap-5">
+                        <div className="flex items-center gap-5 min-w-0">
                           <div
-                            className={`w-12 h-12 rounded-xl ${
+                            className={`w-14 h-14 rounded-2xl ${
                               isCorrect
                                 ? 'bg-[#84bd00] text-[#003d4a]'
                                 : `${style.badgeBg} text-white`
-                            } flex items-center justify-center font-display font-black text-3xl shadow-md shrink-0`}
+                            } flex items-center justify-center font-display font-black text-4xl shadow-md shrink-0`}
                           >
                             {style.label}
                           </div>
                           <span
-                            className={`font-display font-extrabold text-3xl md:text-4xl uppercase tracking-wide truncate ${
+                            className={`font-display font-extrabold text-4xl md:text-5xl uppercase tracking-wide truncate ${
                               isCorrect ? 'text-white' : 'text-[#005566]'
                             }`}
                           >
@@ -590,16 +574,16 @@ export default function TvBroadcastPage() {
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-2.5 shrink-0">
+                        <div className="flex items-center gap-3 shrink-0">
                           <span
-                            className={`font-display font-black text-3xl ${
+                            className={`font-display font-black text-4xl ${
                               isCorrect ? 'text-[#84bd00]' : 'text-[#008296]'
                             }`}
                           >
                             {votePercent}%
                           </span>
                           {isCorrect && (
-                            <CheckCircle2 className="w-8 h-8 text-[#84bd00]" />
+                            <CheckCircle2 className="w-10 h-10 text-[#84bd00]" />
                           )}
                         </div>
                       </div>
@@ -612,17 +596,17 @@ export default function TvBroadcastPage() {
         </div>
       )}
 
-      {/* ================= PHASE 4: RANKING / PODIUM ================= */}
+      {/* ================= PHASE 4: RANKING / PODIUM (Exact Center + 25% Larger) ================= */}
       {phase === 'RANKING' && (
-        <div className="z-10 flex flex-col items-center justify-center w-full max-w-4xl px-6 mt-2">
-          <div className="inline-flex items-center gap-2.5 px-7 py-2 rounded-full bg-[#008296] text-white font-display font-black text-2xl uppercase tracking-wider shadow-lg mb-5">
-            <Trophy className="w-6 h-6 text-[#e5a93c]" />
+        <div className="z-10 flex flex-col items-center justify-center w-full max-w-5xl px-6">
+          <div className="inline-flex items-center gap-3 px-9 py-3 rounded-full bg-[#008296] text-white font-display font-black text-3xl uppercase tracking-wider shadow-lg mb-6">
+            <Trophy className="w-8 h-8 text-[#e5a93c]" />
             <span>TABLA DE POSICIONES</span>
           </div>
 
-          <div className="w-full flex flex-col gap-3">
+          <div className="w-full flex flex-col gap-3.5">
             {(!gameState.leaderboard || gameState.leaderboard.length === 0) && (
-              <div className="text-center py-14 bg-white/90 rounded-3xl border-2 border-[#008296]/25 text-[#005566] text-2xl font-bold shadow">
+              <div className="text-center py-16 bg-white/90 rounded-3xl border-2 border-[#008296]/25 text-[#005566] text-3xl font-bold shadow">
                 Esperando jugadores...
               </div>
             )}
@@ -635,9 +619,9 @@ export default function TvBroadcastPage() {
               return (
                 <div
                   key={player.id}
-                  className={`flex items-center justify-between px-6 py-3.5 rounded-2xl border-2 transition-all shadow-md ${
+                  className={`flex items-center justify-between px-8 py-4 rounded-3xl border-2 transition-all shadow-md ${
                     isFirst
-                      ? 'bg-[#005566] border-4 border-[#e5a93c] text-white scale-[1.02] shadow-[0_12px_35px_rgba(0,85,102,0.35)]'
+                      ? 'bg-[#005566] border-4 border-[#e5a93c] text-white shadow-[0_14px_40px_rgba(0,85,102,0.35)]'
                       : isSecond
                       ? 'bg-white/95 border-[#008296] text-[#005566]'
                       : isThird
@@ -645,9 +629,9 @@ export default function TvBroadcastPage() {
                       : 'bg-white/85 border-[#008296]/20 text-[#005566]'
                   }`}
                 >
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-5">
                     <div
-                      className={`w-11 h-11 rounded-xl flex items-center justify-center font-display font-black text-2xl ${
+                      className={`w-14 h-14 rounded-2xl flex items-center justify-center font-display font-black text-3xl ${
                         isFirst
                           ? 'bg-[#e5a93c] text-[#003d4a]'
                           : isSecond
@@ -660,19 +644,19 @@ export default function TvBroadcastPage() {
                       {idx + 1}
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3.5">
                       <span
-                        className="w-3.5 h-3.5 rounded-full shrink-0"
+                        className="w-4 h-4 rounded-full shrink-0"
                         style={{
                           backgroundColor: player.avatarColor || '#008296',
                         }}
                       />
-                      <span className="font-display font-black text-3xl uppercase tracking-wide">
+                      <span className="font-display font-black text-4xl uppercase tracking-wide">
                         {player.name}
                       </span>
                       {player.streak >= 2 && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#ff5500] text-white text-xs font-extrabold">
-                          <Flame className="w-3.5 h-3.5 fill-white" />x
+                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#ff5500] text-white text-sm font-extrabold">
+                          <Flame className="w-4 h-4 fill-white" />x
                           {player.streak}
                         </span>
                       )}
@@ -680,12 +664,12 @@ export default function TvBroadcastPage() {
                   </div>
 
                   <div
-                    className={`font-display font-black text-3xl tracking-wide ${
+                    className={`font-display font-black text-4xl tracking-wide ${
                       isFirst ? 'text-[#e5a93c]' : 'text-[#008296]'
                     }`}
                   >
                     {player.score.toLocaleString()}{' '}
-                    <span className="text-base font-sans font-bold opacity-75">
+                    <span className="text-lg font-sans font-bold opacity-75">
                       PTS
                     </span>
                   </div>

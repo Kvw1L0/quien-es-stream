@@ -7,9 +7,9 @@ export default function HomePage() {
       className="min-h-screen flex flex-col items-center justify-center p-6 bg-cover bg-center"
       style={{ backgroundImage: "url('/key-visual-bg.jpg')" }}
     >
-      <div className="max-w-4xl w-full text-center mb-16">
+      <div className="max-w-4xl w-full text-center mb-12">
         <span className="inline-block px-5 py-1.5 rounded-full bg-[#008296] text-white font-extrabold text-xs uppercase tracking-widest mb-4 shadow">
-          HOGAR DE CRISTO • LIVE STREAM SHOW
+          SHOW EN VIVO
         </span>
         <h1 className="font-display text-6xl md:text-7xl font-black text-[#005566] uppercase tracking-wide mb-10 drop-shadow-sm">
           ¿QUIÉN ES EL PERSONAJE?
@@ -27,7 +27,7 @@ export default function HomePage() {
               Pantalla TV / OBS
             </h2>
             <p className="text-xs text-[#005566]/80 font-bold">
-              Vista televisiva oficial con el Key Visual para el streaming.
+              Vista televisiva oficial para proyectar en el streaming.
             </p>
           </Link>
 

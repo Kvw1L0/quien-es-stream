@@ -14,7 +14,7 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata = {
-  title: '¿Quién Es? — Hogar de Cristo Stream Show',
+  title: '¿Quién Es? — Juego en Vivo',
   description: 'Juego televisivo interactivo en tiempo real con código QR',
 };
 

@@ -232,7 +232,7 @@ export default function AdminDashboardPage() {
           <div className="w-3.5 h-3.5 rounded-full bg-[#ff5500] animate-ping" />
           <div>
             <h1 className="font-display text-2xl font-black tracking-wide text-white uppercase">
-              DIRECTOR DE STREAMING — HOGAR DE CRISTO
+              DIRECTOR DE STREAMING — ¿QUIÉN ES?
             </h1>
             <p className="text-xs text-slate-300 font-medium">
               Suite completa de producción en vivo: Redoble 3-2-1, Pistas en Zócalo, Puntos x2/x3, Slider de Claridad y Reacciones.

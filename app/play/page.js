@@ -2,15 +2,10 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  Trophy,
-  Flame,
   CheckCircle2,
   XCircle,
-  Clock,
   Sparkles,
-  Lock,
   Lightbulb,
-  Zap,
 } from 'lucide-react';
 import DistortedCanvas from '@/components/DistortedCanvas';
 
@@ -57,10 +52,10 @@ export default function MobilePlayerPage() {
 
   const [gameState, setGameState] = useState(null);
   const [submitting, setSubmitting] = useState(false);
-  const [reactionCooldown, setReactionCooldown] = useState(false);
   const [smoothProgress, setSmoothProgress] = useState(0);
   const [smoothRemainingSec, setSmoothRemainingSec] = useState(0);
   const [drumrollSec, setDrumrollSec] = useState(0);
+  const [justSubmittedFlash, setJustSubmittedFlash] = useState(false);
 
   const syncSnapshotRef = useRef({
     progress: 0,
@@ -217,6 +212,8 @@ export default function MobilePlayerPage() {
       const data = await res.json();
       if (res.ok) {
         setGameState(data);
+        setJustSubmittedFlash(true);
+        setTimeout(() => setJustSubmittedFlash(false), 900);
       }
     } finally {
       setSubmitting(false);
@@ -224,11 +221,9 @@ export default function MobilePlayerPage() {
   }
 
   async function handleSendReaction(emoji) {
-    if (reactionCooldown || !playerId) return;
-    setReactionCooldown(true);
-    setTimeout(() => setReactionCooldown(false), 600);
+    if (!playerId) return;
     try {
-      await fetch('/api/game', {
+      const res = await fetch('/api/game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -238,6 +233,10 @@ export default function MobilePlayerPage() {
           emoji,
         }),
       });
+      if (res.ok) {
+        const data = await res.json();
+        setGameState(data);
+      }
     } catch (e) {}
   }
 
@@ -251,7 +250,7 @@ export default function MobilePlayerPage() {
         <div className="w-full max-w-sm bg-white/95 backdrop-blur-md border-4 border-[#008296] rounded-3xl p-7 shadow-2xl">
           <div className="text-center mb-6">
             <span className="inline-block px-4 py-1 rounded-full bg-[#008296] text-white font-extrabold text-xs uppercase tracking-wider mb-2">
-              HOGAR DE CRISTO • EN VIVO
+              EN VIVO
             </span>
             <h1 className="font-display text-4xl font-black text-[#005566] uppercase tracking-wide">
               ¿QUIÉN ES?
@@ -316,84 +315,45 @@ export default function MobilePlayerPage() {
   const isTimeUp = phase === 'PLAYING' && smoothRemainingSec <= 0;
   const isDrumrolling = phase === 'PLAYING' && round?.isDrumrolling && drumrollSec > 0;
   const multiplier = round?.pointsMultiplier || gameState.settings?.pointsMultiplier || 1;
-  const isFastestWinner =
-    phase === 'REVEALED' && round?.fastestWinner?.id === me.id;
+  const canSendSingleReaction =
+    Boolean(myCurrentRoundAnswer) && !myCurrentRoundAnswer.hasReacted;
 
   return (
     <main
       className="min-h-screen w-full flex flex-col justify-between p-4 pb-8 max-w-md mx-auto select-none bg-cover bg-center"
       style={{ backgroundImage: "url('/key-visual-bg.jpg')" }}
     >
-      {/* Top Player Status Bar */}
-      <header className="flex items-center justify-between bg-white/95 backdrop-blur-md border-2 border-[#008296] px-4 py-3 rounded-2xl shadow-lg">
+      {/* Top Player Status Bar (Clean: ONLY Player Name, no ranking or score shown on mobile) */}
+      <header className="flex items-center justify-center bg-white/95 backdrop-blur-md border-2 border-[#008296] px-5 py-3 rounded-2xl shadow-lg">
         <div className="flex items-center gap-2.5">
           <span
             className="w-3.5 h-3.5 rounded-full shrink-0"
             style={{ backgroundColor: me.avatarColor || '#008296' }}
           />
-          <span className="font-display font-black text-[#005566] text-xl uppercase truncate max-w-[135px]">
+          <span className="font-display font-black text-[#005566] text-2xl uppercase truncate max-w-[220px]">
             {me.name}
           </span>
-          {me.streak >= 2 && (
-            <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-[#ff5500] text-white text-xs font-black">
-              <Flame className="w-3 h-3 fill-white" />x{me.streak}
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="text-right">
-            <span className="text-[10px] text-[#008296] font-extrabold block leading-none">
-              PUNTOS
-            </span>
-            <span className="font-display font-black text-[#005566] text-2xl leading-tight">
-              {me.score.toLocaleString()}
-            </span>
-          </div>
-          <div className="px-3 py-1 rounded-xl bg-[#008296] text-white font-display font-black text-lg">
-            #{me.rank}
-          </div>
         </div>
       </header>
 
-      {/* ================= LOBBY STATE ================= */}
-      {phase === 'LOBBY' && (
+      {/* ================= LOBBY OR RANKING STATE ON MOBILE ================= */}
+      {(phase === 'LOBBY' || phase === 'RANKING') && (
         <div className="flex-1 flex flex-col items-center justify-center text-center px-2 my-4 gap-4">
-          <div className="bg-white/95 border-4 border-[#008296] rounded-3xl p-6 shadow-2xl w-full">
+          <div className="bg-white/95 border-4 border-[#008296] rounded-3xl p-7 shadow-2xl w-full">
             <div className="w-16 h-16 rounded-2xl bg-[#008296]/15 flex items-center justify-center mx-auto mb-3 animate-pulse">
               <Sparkles className="w-9 h-9 text-[#008296]" />
             </div>
             <h2 className="font-display text-3xl font-black text-[#005566] uppercase mb-1">
-              ¡ESTÁS EN EL JUEGO!
+              ¡ATENTO A LA PANTALLA!
             </h2>
             <p className="text-[#005566]/80 font-bold text-sm">
-              Mira la pantalla principal, la próxima foto está por comenzar...
+              Mira la pantalla gigante del show para seguir los resultados y la próxima foto.
             </p>
-          </div>
-
-          {/* Emoji Reaction Bar in Lobby */}
-          <div className="w-full bg-white/95 border-2 border-[#008296]/30 rounded-2xl p-3 shadow-lg">
-            <div className="text-[10px] font-extrabold uppercase tracking-wider text-[#008296] mb-2">
-              ENVÍA TU REACCIÓN A LA PANTALLA TV
-            </div>
-            <div className="flex items-center justify-around">
-              {REACTION_EMOJIS.map((em) => (
-                <button
-                  key={em}
-                  type="button"
-                  disabled={reactionCooldown}
-                  onClick={() => handleSendReaction(em)}
-                  className="text-2xl p-2 rounded-xl bg-[#f6f0e6] active:scale-125 transition-transform"
-                >
-                  {em}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       )}
 
-      {/* ================= PLAYING, TIME-UP SUSPENSE OR REVEALED STATE ================= */}
+      {/* ================= PLAYING OR REVEALED STATE ================= */}
       {(phase === 'PLAYING' || phase === 'REVEALED') && round && (
         <div className="flex-1 flex flex-col items-center justify-center gap-2.5 my-2">
           {/* Top Header Pill SEPARATED above the face frame */}
@@ -404,27 +364,21 @@ export default function MobilePlayerPage() {
               </div>
             )}
 
-            {phase === 'PLAYING' && !isTimeUp && !isDrumrolling && (
+            {phase === 'PLAYING' && !isDrumrolling && (
               <div
                 className={`px-6 py-1 rounded-full font-display font-black text-2xl uppercase tracking-wider border-2 shadow-md ${
-                  smoothRemainingSec <= 5
+                  !isTimeUp && smoothRemainingSec <= 5
                     ? 'bg-[#ff5500] border-white text-white animate-bounce'
                     : 'bg-[#005566] border-[#008296] text-white'
                 }`}
               >
-                TIEMPO: {smoothRemainingSec}s
+                {isTimeUp ? '¿QUIÉN ES?' : `¿QUIÉN ES? • ${smoothRemainingSec}s`}
               </div>
             )}
 
             {isDrumrolling && (
               <div className="px-6 py-1 rounded-full bg-[#005566] border-2 border-[#e5a93c] text-[#e5a93c] font-display font-black text-2xl uppercase tracking-wider shadow-lg animate-drumroll">
-                REVELANDO EN {drumrollSec}...
-              </div>
-            )}
-
-            {phase === 'PLAYING' && isTimeUp && !isDrumrolling && (
-              <div className="px-6 py-1 rounded-full bg-[#ff5500] border-2 border-white text-white font-display font-black text-2xl uppercase tracking-wider shadow-lg flex items-center gap-2">
-                <Lock className="w-5 h-5" /> ¡TIEMPO CERRADO!
+                ¿QUIÉN ES? {drumrollSec}...
               </div>
             )}
 
@@ -481,8 +435,15 @@ export default function MobilePlayerPage() {
             </div>
           )}
 
-          {/* 1) PLAYING, Timer Running & Not Answered Yet -> Show 4 Big Option Buttons */}
-          {phase === 'PLAYING' && !isTimeUp && !myCurrentRoundAnswer && (
+          {/* Brief confirmation toast when tapping an option (without locking or marking any button!) */}
+          {justSubmittedFlash && phase === 'PLAYING' && (
+            <div className="px-4 py-1 rounded-full bg-[#005566] text-white text-xs font-extrabold uppercase tracking-wider shadow animate-slide-up">
+              ¡Respuesta actualizada! Puedes cambiarla mientras quede tiempo
+            </div>
+          )}
+
+          {/* 1) PLAYING & Timer Running -> ALWAYS Show the 4 Unmarked Option Buttons so players can change their choice anytime! */}
+          {phase === 'PLAYING' && !isTimeUp && (
             <div className="grid grid-cols-1 gap-2 w-full mt-0.5">
               {round.options?.map((optionText, idx) => {
                 const style = OPTION_STYLES[idx % 4];
@@ -505,156 +466,78 @@ export default function MobilePlayerPage() {
             </div>
           )}
 
-          {/* 2) PLAYING & Player Already Voted (Waiting for timer & Admin manual reveal) + Emoji Reactions */}
-          {phase === 'PLAYING' && myCurrentRoundAnswer && (
-            <div className="w-full space-y-2.5">
-              <div className="w-full bg-white/95 border-4 border-[#008296] rounded-3xl p-4 text-center shadow-xl">
-                <Clock className="w-8 h-8 text-[#008296] mx-auto mb-1 animate-pulse" />
-                <div className="font-display font-black text-2xl uppercase text-[#005566]">
-                  ¡VOTO REGISTRADO EN {(myCurrentRoundAnswer.elapsedMs / 1000).toFixed(2)}s!
-                </div>
-                <div className="text-[#005566] text-sm font-bold">
-                  Elegiste:{' '}
-                  <span className="text-[#008296] font-extrabold uppercase">
-                    {round.options?.[myCurrentRoundAnswer.optionIndex]}
-                  </span>
-                </div>
-              </div>
-
-              {/* Emoji Reaction Bar while waiting for reveal */}
-              <div className="w-full bg-white/95 border-2 border-[#008296]/30 rounded-2xl p-2.5 text-center shadow">
-                <div className="text-[10px] font-extrabold uppercase tracking-wider text-[#008296] mb-1.5">
-                  REACCIONA EN LA PANTALLA TV MIENTRAS ESPERAS
-                </div>
-                <div className="flex items-center justify-around">
-                  {REACTION_EMOJIS.map((em) => (
-                    <button
-                      key={em}
-                      type="button"
-                      disabled={reactionCooldown}
-                      onClick={() => handleSendReaction(em)}
-                      className="text-2xl p-1.5 rounded-xl bg-[#f6f0e6] active:scale-125 transition-transform"
-                    >
-                      {em}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 3) PLAYING & Timer Reached 0 without Player Answering */}
-          {phase === 'PLAYING' && isTimeUp && !myCurrentRoundAnswer && (
-            <div className="w-full bg-white/95 border-4 border-[#ff5500] rounded-3xl p-5 text-center shadow-xl">
-              <Lock className="w-10 h-10 text-[#ff5500] mx-auto mb-1.5" />
+          {/* 2) PLAYING & Timer Reached 0 -> Waiting for Admin reveal */}
+          {phase === 'PLAYING' && isTimeUp && (
+            <div className="w-full bg-white/95 border-4 border-[#008296] rounded-3xl p-5 text-center shadow-xl">
               <div className="font-display font-black text-2xl uppercase text-[#005566]">
-                ¡SE ACABÓ EL TIEMPO!
+                ¡MIRA LA PANTALLA GIGANTE!
               </div>
               <div className="text-[#005566]/80 text-xs font-bold mt-1">
-                Mira la pantalla principal para descubrir quién es el personaje...
+                En instantes se revelará quién es el personaje...
               </div>
             </div>
           )}
 
-          {/* 4) REVEALED: Admin manually released the result! */}
+          {/* 3) REVEALED: Admin manually released the result! */}
           {phase === 'REVEALED' && (
-            <div className="w-full space-y-2.5">
-              <div
-                className={`w-full rounded-3xl p-4 text-center border-4 shadow-2xl ${
-                  myCurrentRoundAnswer?.isCorrect
-                    ? 'bg-[#005566] border-[#84bd00] text-white'
-                    : 'bg-white/95 border-[#ff5500] text-[#005566]'
-                }`}
-              >
-                {myCurrentRoundAnswer?.isCorrect ? (
-                  <>
-                    <CheckCircle2 className="w-10 h-10 text-[#84bd00] mx-auto mb-1" />
-                    <div className="font-display font-black text-3xl uppercase">
-                      ¡ACERTASTE!
-                    </div>
-                    <div className="font-display font-black text-4xl text-[#e5a93c]">
-                      +{myCurrentRoundAnswer.pointsEarned} PTS
-                    </div>
-                    {isFastestWinner && (
-                      <div className="mt-1.5 inline-flex items-center gap-1 px-3 py-0.5 rounded-full bg-[#e5a93c] text-[#003d4a] font-extrabold text-xs uppercase">
-                        <Zap className="w-3.5 h-3.5 fill-current" /> ¡FUISTE EL MÁS RÁPIDO DE LA RONDA!
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="w-10 h-10 text-[#ff5500] mx-auto mb-1" />
-                    <div className="font-display font-black text-3xl uppercase text-[#ff5500]">
-                      {myCurrentRoundAnswer ? '¡NO ERA!' : '¡SIN RESPUESTA!'}
-                    </div>
-                    <div className="text-[#005566] text-base font-extrabold mt-0.5">
-                      Era:{' '}
-                      <span className="text-[#008296] uppercase">
-                        {round.correctName}
-                      </span>
-                    </div>
-                  </>
-                )}
-              </div>
+            <div
+              className={`w-full rounded-3xl p-5 text-center border-4 shadow-2xl ${
+                myCurrentRoundAnswer?.isCorrect
+                  ? 'bg-[#005566] border-[#84bd00] text-white'
+                  : 'bg-white/95 border-[#ff5500] text-[#005566]'
+              }`}
+            >
+              {myCurrentRoundAnswer?.isCorrect ? (
+                <>
+                  <CheckCircle2 className="w-11 h-11 text-[#84bd00] mx-auto mb-1" />
+                  <div className="font-display font-black text-3xl uppercase">
+                    ¡ACERTASTE!
+                  </div>
+                  <div className="text-[#e5a93c] text-lg font-extrabold mt-0.5 uppercase">
+                    {round.correctName}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <XCircle className="w-11 h-11 text-[#ff5500] mx-auto mb-1" />
+                  <div className="font-display font-black text-3xl uppercase text-[#ff5500]">
+                    {myCurrentRoundAnswer ? '¡NO ERA!' : '¡SIN RESPUESTA!'}
+                  </div>
+                  <div className="text-[#005566] text-base font-extrabold mt-0.5">
+                    Era:{' '}
+                    <span className="text-[#008296] uppercase">
+                      {round.correctName}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
-              {/* Emoji Reaction Bar after reveal */}
-              <div className="w-full bg-white/95 border-2 border-[#008296]/30 rounded-2xl p-2.5 text-center shadow">
-                <div className="flex items-center justify-around">
-                  {REACTION_EMOJIS.map((em) => (
-                    <button
-                      key={em}
-                      type="button"
-                      disabled={reactionCooldown}
-                      onClick={() => handleSendReaction(em)}
-                      className="text-2xl p-1.5 rounded-xl bg-[#f6f0e6] active:scale-125 transition-transform"
-                    >
-                      {em}
-                    </button>
-                  ))}
-                </div>
+          {/* Strictly 1 Emoji Reaction allowed per question AFTER the player has answered */}
+          {canSendSingleReaction && (
+            <div className="w-full bg-white/95 border-2 border-[#008296]/30 rounded-2xl p-2.5 text-center shadow mt-1">
+              <div className="text-[10px] font-extrabold uppercase tracking-wider text-[#008296] mb-1">
+                ENVÍA 1 REACCIÓN A LA PANTALLA (1 POR PREGUNTA)
+              </div>
+              <div className="flex items-center justify-around">
+                {REACTION_EMOJIS.map((em) => (
+                  <button
+                    key={em}
+                    type="button"
+                    onClick={() => handleSendReaction(em)}
+                    className="text-2xl p-1.5 rounded-xl bg-[#f6f0e6] active:scale-125 transition-transform"
+                  >
+                    {em}
+                  </button>
+                ))}
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* ================= RANKING STATE ================= */}
-      {phase === 'RANKING' && (
-        <div className="flex-1 flex flex-col items-center justify-center text-center my-6 gap-4">
-          <div className="w-full bg-white/95 border-4 border-[#e5a93c] rounded-3xl p-6 shadow-2xl">
-            <Trophy className="w-14 h-14 text-[#e5a93c] mx-auto mb-2" />
-            <div className="text-xs font-extrabold uppercase tracking-widest text-[#008296]">
-              TU POSICIÓN EN EL RANKING
-            </div>
-            <div className="font-display text-7xl font-black text-[#005566] my-1">
-              #{me.rank}
-            </div>
-            <div className="font-display text-3xl font-black text-[#008296]">
-              {me.score.toLocaleString()} PTS
-            </div>
-          </div>
-
-          <div className="w-full bg-white/95 border-2 border-[#008296]/30 rounded-2xl p-3 shadow-lg">
-            <div className="flex items-center justify-around">
-              {REACTION_EMOJIS.map((em) => (
-                <button
-                  key={em}
-                  type="button"
-                  disabled={reactionCooldown}
-                  onClick={() => handleSendReaction(em)}
-                  className="text-2xl p-2 rounded-xl bg-[#f6f0e6] active:scale-125 transition-transform"
-                >
-                  {em}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <footer className="text-center text-[11px] text-[#005566] font-extrabold bg-white/75 backdrop-blur-sm py-1 px-3 rounded-full mx-auto">
-        HOGAR DE CRISTO • SHOW EN VIVO
-      </footer>
+      <div className="h-2" />
     </main>
   );
 }

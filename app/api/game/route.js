@@ -75,7 +75,6 @@ function buildClientPayload(state, role, playerId) {
           id: p.id,
           name: p.name,
           avatarColor: p.avatarColor,
-          elapsedMs: p.lastAnswer.elapsedMs,
           answeredAt: p.lastAnswer.answeredAt,
         });
 
@@ -150,9 +149,8 @@ function buildClientPayload(state, role, playerId) {
           drumrollRemainingMs,
           hintText: state.activeRound.hintText || activePhoto?.hint || '',
           showHintOnTv: Boolean(state.activeRound.showHintOnTv),
-          recentResponders: roundResponders.slice(0, 5),
+          recentResponders: roundResponders.slice(0, 8),
           fastestWinner: isRevealed || role === 'admin' ? fastestCorrect : null,
-          // Controls whether the TV displays the 4 alternatives & live percentages alongside the giant photo
           showAudienceVotes: showOptionsOnTv,
           voteCounts:
             isRevealed || role === 'admin' || showOptionsOnTv
@@ -170,28 +168,22 @@ function buildClientPayload(state, role, playerId) {
 
   if (playerId && state.players[playerId]) {
     const me = state.players[playerId];
-    const myRank = playersList.findIndex((p) => p.id === playerId) + 1;
     const sanitizedLastAnswer = me.lastAnswer
       ? {
           roundId: me.lastAnswer.roundId,
           optionIndex: me.lastAnswer.optionIndex,
           answeredAt: me.lastAnswer.answeredAt,
-          elapsedMs: me.lastAnswer.elapsedMs,
           isCorrect: isRevealed ? me.lastAnswer.isCorrect : null,
           pointsEarned: isRevealed ? me.lastAnswer.pointsEarned : null,
+          hasReacted: Boolean(me.lastAnswer.hasReacted),
         }
       : null;
 
     basePayload.me = {
-      ...me,
-      score:
-        !isRevealed &&
-        state.activeRound &&
-        me.lastAnswer?.roundId === state.activeRound.roundId
-          ? Math.max(0, me.score - (me.lastAnswer.pointsEarned || 0))
-          : me.score,
+      id: me.id,
+      name: me.name,
+      avatarColor: me.avatarColor,
       lastAnswer: sanitizedLastAnswer,
-      rank: myRank,
     };
   }
 
@@ -257,14 +249,30 @@ export async function POST(request) {
         if (state.phase !== 'PLAYING' || !state.activeRound) {
           return NextResponse.json({ error: 'La ronda ya no está activa' }, { status: 400 });
         }
-        if (player.lastAnswer?.roundId === state.activeRound.roundId) {
-          return NextResponse.json({ error: 'Ya respondiste en esta ronda' }, { status: 400 });
-        }
 
         const roundStatus = computeRoundProgress(state.activeRound, now);
         if (roundStatus.isFinished) {
           return NextResponse.json({ error: '¡Se acabó el tiempo para votar!' }, { status: 400 });
         }
+
+        // Allow changing the answer at any moment while the round is active!
+        // First revert any points/streak added from a previous choice in this same round:
+        const prevAnswerForThisRound =
+          player.lastAnswer?.roundId === state.activeRound.roundId
+            ? player.lastAnswer
+            : null;
+
+        const baseScoreBeforeRound = prevAnswerForThisRound
+          ? typeof prevAnswerForThisRound.baseScore === 'number'
+            ? prevAnswerForThisRound.baseScore
+            : Math.max(0, (player.score || 0) - (prevAnswerForThisRound.pointsEarned || 0))
+          : player.score || 0;
+
+        const baseStreakBeforeRound = prevAnswerForThisRound
+          ? typeof prevAnswerForThisRound.baseStreak === 'number'
+            ? prevAnswerForThisRound.baseStreak
+            : 0
+          : player.streak || 0;
 
         const isCorrect = optionIndex === state.activeRound.correctOptionIndex;
         const speedRatio = Math.max(0, Math.min(1, 1 - roundStatus.progress));
@@ -273,12 +281,13 @@ export async function POST(request) {
 
         if (isCorrect) {
           const basePoints = Math.round((500 + 500 * speedRatio) * multiplier);
-          const newStreak = (player.streak || 0) + 1;
+          const newStreak = baseStreakBeforeRound + 1;
           const streakBonus = Math.min(300, (newStreak - 1) * 50) * multiplier;
           pointsEarned = basePoints + streakBonus;
-          player.score = (player.score || 0) + pointsEarned;
+          player.score = baseScoreBeforeRound + pointsEarned;
           player.streak = newStreak;
         } else {
+          player.score = baseScoreBeforeRound;
           player.streak = 0;
         }
 
@@ -289,6 +298,9 @@ export async function POST(request) {
           elapsedMs: roundStatus.elapsedMs,
           isCorrect,
           pointsEarned,
+          baseScore: baseScoreBeforeRound,
+          baseStreak: baseStreakBeforeRound,
+          hasReacted: Boolean(prevAnswerForThisRound?.hasReacted),
         };
 
         await saveGameState(state);
@@ -300,12 +312,25 @@ export async function POST(request) {
         const allowedEmojis = ['🔥', '😂', '🤯', '👏', '❤️', '🎉'];
         if (!allowedEmojis.includes(emoji)) break;
         const player = state.players[playerId];
+        if (!player || !state.activeRound) break;
+
+        // Limit to strictly 1 reaction per question after the player has answered!
+        if (
+          !player.lastAnswer ||
+          player.lastAnswer.roundId !== state.activeRound.roundId ||
+          player.lastAnswer.hasReacted
+        ) {
+          break;
+        }
+
+        player.lastAnswer.hasReacted = true;
+
         if (!Array.isArray(state.reactions)) state.reactions = [];
         state.reactions.push({
           id: `rx-${now}-${Math.random().toString(36).slice(2, 6)}`,
           emoji,
-          playerName: player ? player.name : 'Espectador',
-          avatarColor: player ? player.avatarColor : '#008296',
+          playerName: player.name || 'Espectador',
+          avatarColor: player.avatarColor || '#008296',
           createdAt: now,
           offsetLeft: Math.floor(15 + Math.random() * 70),
         });
@@ -386,7 +411,6 @@ export async function POST(request) {
         const mult = Number(pointsMultiplier || state.settings.pointsMultiplier || 1);
         const { options, correctOptionIndex } = generateOptionsForPhoto(targetPhoto, state.photos);
 
-        // Always start every round with showAudienceVotes: false so ONLY the giant photo appears on TV!
         state.activeRound = {
           roundId: `round-${now}`,
           photoId: targetPhoto.id,
@@ -469,7 +493,6 @@ export async function POST(request) {
       }
 
       case 'TOGGLE_AUDIENCE_VOTES': {
-        // Toggles showing the 4 alternatives + live percentages on the big TV screen!
         if (state.activeRound) {
           state.activeRound.showAudienceVotes = !state.activeRound.showAudienceVotes;
           await saveGameState(state);
