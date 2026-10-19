@@ -3,15 +3,36 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import confetti from 'canvas-confetti';
-import { Trophy, Users, Flame, CheckCircle2 } from 'lucide-react';
+import { Trophy, Users, Flame, CheckCircle2, Lock } from 'lucide-react';
 import DistortedCanvas from '@/components/DistortedCanvas';
 import { soundFX } from '@/lib/soundEffects';
 
+// Branded Option Styles matching Hogar de Cristo Key Visual
 const OPTION_STYLES = [
-  { label: 'A', bg: 'from-rose-600 to-rose-700', border: 'border-rose-400', bar: 'bg-rose-500' },
-  { label: 'B', bg: 'from-sky-600 to-sky-700', border: 'border-sky-400', bar: 'bg-sky-500' },
-  { label: 'C', bg: 'from-amber-500 to-amber-600', border: 'border-amber-300', bar: 'bg-amber-500' },
-  { label: 'D', bg: 'from-emerald-600 to-emerald-700', border: 'border-emerald-400', bar: 'bg-emerald-500' },
+  {
+    label: 'A',
+    badgeBg: 'bg-[#008296]',
+    barFill: 'bg-[#008296]',
+    border: 'border-[#008296]/30',
+  },
+  {
+    label: 'B',
+    badgeBg: 'bg-[#e59a24]',
+    barFill: 'bg-[#e59a24]',
+    border: 'border-[#e59a24]/30',
+  },
+  {
+    label: 'C',
+    badgeBg: 'bg-[#73a900]',
+    barFill: 'bg-[#73a900]',
+    border: 'border-[#73a900]/30',
+  },
+  {
+    label: 'D',
+    badgeBg: 'bg-[#ff5500]',
+    barFill: 'bg-[#ff5500]',
+    border: 'border-[#ff5500]/30',
+  },
 ];
 
 export default function TvBroadcastPage() {
@@ -22,6 +43,8 @@ export default function TvBroadcastPage() {
 
   const prevPhaseRef = useRef(null);
   const prevSecRef = useRef(null);
+  const buzzerPlayedForRoundRef = useRef(null);
+
   const syncSnapshotRef = useRef({
     progress: 0,
     remainingMs: 0,
@@ -36,7 +59,7 @@ export default function TvBroadcastPage() {
     }
   }, []);
 
-  // Poll server state every 500ms
+  // Poll server state every 450ms
   useEffect(() => {
     let active = true;
     async function fetchState() {
@@ -67,7 +90,7 @@ export default function TvBroadcastPage() {
     }
 
     fetchState();
-    const interval = setInterval(fetchState, 500);
+    const interval = setInterval(fetchState, 450);
     return () => {
       active = false;
       clearInterval(interval);
@@ -86,14 +109,13 @@ export default function TvBroadcastPage() {
         } else {
           const delta = performance.now() - snap.syncedAt;
           const remMs = Math.max(0, snap.remainingMs - delta);
-          const prog = snap.durationMs > 0
-            ? Math.min(1, 1 - remMs / snap.durationMs)
-            : 1;
+          const prog =
+            snap.durationMs > 0 ? Math.min(1, 1 - remMs / snap.durationMs) : 1;
           setSmoothProgress(prog);
           const sec = Math.ceil(remMs / 1000);
           setSmoothRemainingSec(sec);
 
-          // Trigger countdown ticks in last 5 seconds
+          // Countdown ticks in last 5 seconds
           if (
             gameState.settings?.soundEnabled &&
             sec > 0 &&
@@ -102,6 +124,16 @@ export default function TvBroadcastPage() {
           ) {
             prevSecRef.current = sec;
             soundFX.playTick(sec <= 2);
+          }
+
+          // When timer hits 0, play dramatic Time-Up Buzzer once (without revealing!)
+          if (
+            sec === 0 &&
+            gameState.settings?.soundEnabled &&
+            buzzerPlayedForRoundRef.current !== gameState.activeRound.roundId
+          ) {
+            buzzerPlayedForRoundRef.current = gameState.activeRound.roundId;
+            soundFX.playTimeUpBuzzer();
           }
         }
       } else if (gameState?.phase === 'REVEALED') {
@@ -114,7 +146,7 @@ export default function TvBroadcastPage() {
     return () => cancelAnimationFrame(rafId);
   }, [gameState?.phase, gameState?.activeRound, gameState?.settings?.soundEnabled]);
 
-  // Trigger confetti & SFX on phase transitions
+  // Trigger confetti & SFX ONLY when Admin manually transitions to REVEALED or RANKING
   useEffect(() => {
     if (!gameState) return;
     const prev = prevPhaseRef.current;
@@ -123,16 +155,18 @@ export default function TvBroadcastPage() {
       if (curr === 'REVEALED') {
         if (gameState.settings?.soundEnabled) soundFX.playReveal();
         confetti({
-          particleCount: 90,
-          spread: 75,
-          origin: { y: 0.6 },
+          particleCount: 110,
+          spread: 85,
+          origin: { y: 0.55 },
+          colors: ['#008296', '#e5a93c', '#84bd00', '#ff5500', '#00b4cc'],
         });
       } else if (curr === 'RANKING') {
         if (gameState.settings?.soundEnabled) soundFX.playPodium();
         confetti({
-          particleCount: 130,
-          spread: 100,
+          particleCount: 140,
+          spread: 110,
           origin: { y: 0.5 },
+          colors: ['#008296', '#e5a93c', '#84bd00', '#ff5500'],
         });
       }
     }
@@ -144,43 +178,43 @@ export default function TvBroadcastPage() {
   }
 
   const chromaMode = gameState.settings?.chromaMode || 'DARK';
-  const bgClass =
-    chromaMode === 'TRANSPARENT'
-      ? 'bg-transparent'
-      : chromaMode === 'GREEN'
-      ? 'bg-[#00ff00]'
-      : 'bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-950 via-slate-950 to-black';
-
   const phase = gameState.phase;
   const round = gameState.activeRound;
   const showQr = gameState.settings?.showQrOnTv !== false;
+  const isTimeUp = phase === 'PLAYING' && smoothRemainingSec <= 0;
 
   return (
     <main
       onClick={() => soundFX.init()}
-      className={`relative min-h-screen w-screen overflow-hidden flex items-center justify-center select-none ${bgClass}`}
+      className={`relative min-h-screen w-screen overflow-hidden flex flex-col items-center justify-start pt-6 md:pt-8 pb-36 select-none ${
+        chromaMode === 'TRANSPARENT'
+          ? 'bg-transparent'
+          : chromaMode === 'GREEN'
+          ? 'bg-[#00ff00]'
+          : 'bg-[#f6f0e6]'
+      }`}
     >
-      {/* Ambient studio glow when in DARK mode */}
+      {/* Key Visual Background Image Layer (when not in OBS Transparent or Chroma Green mode) */}
       {chromaMode === 'DARK' && (
-        <>
-          <div className="pointer-events-none absolute -top-40 -left-40 w-[36rem] h-[36rem] rounded-full bg-indigo-600/20 blur-[130px]" />
-          <div className="pointer-events-none absolute -bottom-40 -right-40 w-[36rem] h-[36rem] rounded-full bg-fuchsia-600/20 blur-[130px]" />
-        </>
+        <div
+          className="pointer-events-none fixed inset-0 z-0 bg-cover bg-center bg-no-repeat"
+          style={{ backgroundImage: "url('/key-visual-bg.jpg')" }}
+        />
       )}
 
-      {/* Floating Corner QR Widget (during PLAYING / REVEALED / RANKING) */}
+      {/* Floating QR Widget (Positioned in top-left / mid-left safe zone so it never collides with the Hogar de Cristo logo at top-right or balloons at bottom) */}
       {showQr && phase !== 'LOBBY' && joinUrl && (
-        <div className="fixed bottom-6 right-6 z-40 flex items-center gap-4 bg-slate-900/90 backdrop-blur-xl border border-white/15 p-3.5 rounded-3xl shadow-2xl">
-          <div className="bg-white p-2 rounded-2xl">
-            <QRCodeSVG value={joinUrl} size={96} level="M" />
+        <div className="fixed bottom-28 right-7 z-40 flex items-center gap-3.5 bg-white/95 backdrop-blur-md border-2 border-[#008296]/30 p-3 rounded-3xl shadow-[0_16px_40px_rgba(0,85,102,0.22)]">
+          <div className="bg-white p-1.5 rounded-2xl border border-[#008296]/15">
+            <QRCodeSVG value={joinUrl} size={86} fgColor="#005566" level="M" />
           </div>
           <div className="pr-3">
-            <div className="flex items-center gap-2 text-indigo-400 font-bold text-sm uppercase tracking-wider">
-              <Users className="w-4 h-4" />
-              <span>{gameState.playerCount || 0} en vivo</span>
+            <div className="flex items-center gap-1.5 text-[#008296] font-extrabold text-xs uppercase tracking-wider">
+              <Users className="w-3.5 h-3.5" />
+              <span>{gameState.playerCount || 0} JUGANDO</span>
             </div>
-            <p className="text-white font-black text-xl tracking-tight leading-tight mt-0.5">
-              ¡ÚNETE AL JUEGO!
+            <p className="font-display text-[#005566] font-black text-2xl uppercase tracking-wide leading-none mt-0.5">
+              ESCANEA Y JUEGA
             </p>
           </div>
         </div>
@@ -188,35 +222,37 @@ export default function TvBroadcastPage() {
 
       {/* ================= PHASE 1: LOBBY ================= */}
       {phase === 'LOBBY' && (
-        <div className="z-10 flex flex-col items-center justify-center text-center px-6 max-w-4xl w-full">
-          <div className="inline-flex items-center gap-3 px-6 py-2.5 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 font-bold text-lg mb-8 animate-pulse">
-            <Users className="w-6 h-6" />
+        <div className="z-10 flex flex-col items-center justify-center text-center px-6 max-w-4xl w-full mt-4">
+          <div className="inline-flex items-center gap-2.5 px-6 py-2 rounded-full bg-[#008296] text-white font-extrabold text-base tracking-wider uppercase shadow-lg mb-4">
+            <Users className="w-5 h-5" />
             <span>{gameState.playerCount || 0} JUGADORES CONECTADOS</span>
           </div>
 
-          <h1 className="text-7xl md:text-8xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-indigo-200 to-fuchsia-300 drop-shadow-lg mb-10">
-            ¿QUIÉN ES?
+          <h1 className="font-display text-7xl md:text-8xl font-black uppercase tracking-wide text-[#005566] drop-shadow-sm mb-6 leading-none">
+            ¿QUIÉN ES EL PERSONAJE?
           </h1>
 
           {joinUrl && (
-            <div className="bg-white p-7 rounded-[2.5rem] shadow-[0_0_80px_rgba(99,102,241,0.5)] border-8 border-indigo-500/30 animate-float">
-              <QRCodeSVG value={joinUrl} size={280} level="M" />
+            <div className="bg-white p-6 rounded-[2.5rem] shadow-[0_20px_60px_rgba(0,85,102,0.25)] border-4 border-[#008296] animate-float">
+              <QRCodeSVG value={joinUrl} size={240} fgColor="#005566" level="M" />
             </div>
           )}
 
           {/* Connected player pills */}
           {gameState.leaderboard?.length > 0 && (
-            <div className="mt-10 flex flex-wrap items-center justify-center gap-3 max-w-3xl">
+            <div className="mt-7 flex flex-wrap items-center justify-center gap-2.5 max-w-3xl">
               {gameState.leaderboard.slice(0, 14).map((p) => (
                 <div
                   key={p.id}
-                  className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-slate-900/85 border border-white/10 shadow-lg"
+                  className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/95 border-2 border-[#008296]/25 shadow-md"
                 >
                   <span
-                    className="w-3.5 h-3.5 rounded-full"
-                    style={{ backgroundColor: p.avatarColor || '#6366f1' }}
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: p.avatarColor || '#008296' }}
                   />
-                  <span className="font-bold text-white text-base">{p.name}</span>
+                  <span className="font-extrabold text-[#005566] text-base">
+                    {p.name}
+                  </span>
                 </div>
               ))}
             </div>
@@ -224,153 +260,203 @@ export default function TvBroadcastPage() {
         </div>
       )}
 
-      {/* ================= PHASE 2 & 3: PLAYING & REVEALED ================= */}
+      {/* ================= PHASE 2 & 3: PLAYING, TIME-UP SUSPENSE & REVEALED ================= */}
       {(phase === 'PLAYING' || phase === 'REVEALED') && round && (
-        <div className="z-10 flex flex-col lg:flex-row items-center justify-center gap-10 lg:gap-14 w-full max-w-7xl px-8 py-6">
-          {/* Left / Center: Giant Photo Frame + Countdown Bar */}
-          <div className="relative flex flex-col items-center">
-            {/* Floating Timer Pill */}
-            {phase === 'PLAYING' && (
-              <div
-                className={` -mb-6 z-20 px-8 py-2.5 rounded-full font-black text-4xl tracking-wider shadow-2xl border-2 transition-colors ${
-                  smoothRemainingSec <= 5
-                    ? 'bg-rose-600 border-rose-300 text-white animate-bounce'
-                    : 'bg-slate-900/95 border-indigo-400/50 text-white'
-                }`}
-              >
-                {smoothRemainingSec}s
-              </div>
-            )}
-
-            {/* Revealed Answer Banner */}
-            {phase === 'REVEALED' && (
-              <div className="-mb-6 z-20 px-9 py-3 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 border-2 border-emerald-200 text-white font-black text-3xl md:text-4xl tracking-tight shadow-[0_0_40px_rgba(16,185,129,0.7)]">
-                {round.correctName}
-              </div>
-            )}
-
-            {/* Main Canvas Container */}
-            <div
-              className={`relative w-[420px] h-[420px] md:w-[500px] md:h-[500px] rounded-[2.5rem] overflow-hidden shadow-[0_0_90px_rgba(0,0,0,0.85)] border-4 transition-all duration-500 bg-slate-900 ${
-                phase === 'REVEALED'
-                  ? 'border-emerald-400 shadow-[0_0_70px_rgba(16,185,129,0.45)] scale-[1.02]'
-                  : smoothRemainingSec <= 5
-                  ? 'border-rose-500 shadow-[0_0_70px_rgba(244,63,94,0.45)]'
-                  : 'border-indigo-500/60'
-              }`}
-            >
-              <DistortedCanvas
-                imageSrc={round.imageData}
-                progress={smoothProgress}
-                effectType={round.effectType}
-                isRevealed={phase === 'REVEALED'}
-                className="w-full h-full object-cover"
-              />
-
-              {/* Progress Bar at the bottom of the photo */}
-              {phase === 'PLAYING' && (
-                <div className="absolute bottom-0 left-0 right-0 h-3.5 bg-black/60 backdrop-blur-sm">
-                  <div
-                    className={`h-full transition-none ${
-                      smoothRemainingSec <= 5
-                        ? 'bg-gradient-to-r from-rose-500 to-amber-500'
-                        : 'bg-gradient-to-r from-indigo-500 via-purple-500 to-fuchsia-500'
-                    }`}
-                    style={{ width: `${Math.max(0, (1 - smoothProgress) * 100)}%` }}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Right: 4 Options Cards + Live Vote Bars */}
-          <div className="flex flex-col gap-4 w-full max-w-xl">
-            {/* Live responses counter badge */}
-            <div className="flex items-center justify-between px-2 mb-1">
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-900/90 border border-white/10 text-slate-300 font-bold text-sm">
-                <Users className="w-4 h-4 text-indigo-400" />
-                <span>{round.totalVotes || 0} VOTOS RECIBIDOS</span>
-              </div>
-            </div>
-
-            {round.options?.map((optionText, idx) => {
-              const style = OPTION_STYLES[idx % 4];
-              const isCorrect = phase === 'REVEALED' && round.correctOptionIndex === idx;
-              const isWrong = phase === 'REVEALED' && round.correctOptionIndex !== idx;
-
-              const votesForOption = round.voteCounts ? round.voteCounts[idx] || 0 : 0;
-              const votePercent =
-                phase === 'REVEALED' && round.totalVotes > 0
-                  ? Math.round((votesForOption / round.totalVotes) * 100)
-                  : 0;
-
-              return (
+        <div className="z-10 flex flex-col items-center w-full max-w-6xl px-8">
+          {/* TOP DEDICATED TELEVISION HEADER BANNER (Completely above and separated from the face box so it NEVER overlaps the portrait!) */}
+          <div className="w-full flex items-center justify-center mb-5 min-h-[76px]">
+            {phase === 'PLAYING' && !isTimeUp && (
+              <div className="flex items-center gap-5 px-8 py-3 rounded-3xl bg-white/95 border-4 border-[#008296] shadow-[0_12px_35px_rgba(0,85,102,0.18)]">
+                <span className="font-display text-3xl md:text-4xl font-black uppercase tracking-wider text-[#005566]">
+                  ¿QUIÉN ES?
+                </span>
+                <div className="h-8 w-0.5 bg-[#008296]/25" />
                 <div
-                  key={idx}
-                  className={`relative overflow-hidden rounded-3xl border-2 p-5 transition-all duration-500 ${
-                    isCorrect
-                      ? 'bg-emerald-950/95 border-emerald-400 scale-105 shadow-[0_0_40px_rgba(16,185,129,0.5)]'
-                      : isWrong
-                      ? 'bg-slate-900/50 border-white/5 opacity-45 scale-95'
-                      : 'bg-slate-900/90 border-white/15 shadow-xl'
+                  className={`font-display text-4xl md:text-5xl font-black px-5 py-1 rounded-2xl transition-colors ${
+                    smoothRemainingSec <= 5
+                      ? 'bg-[#ff5500] text-white animate-bounce'
+                      : 'bg-[#008296] text-white'
                   }`}
                 >
-                  {/* Percentage fill bar when revealed */}
-                  {phase === 'REVEALED' && (
-                    <div
-                      className={`absolute inset-y-0 left-0 opacity-25 transition-all duration-1000 ${
-                        isCorrect ? 'bg-emerald-400' : style.bar
-                      }`}
-                      style={{ width: `${votePercent}%` }}
-                    />
-                  )}
-
-                  <div className="relative z-10 flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-4">
-                      <div
-                        className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${style.bg} flex items-center justify-center font-black text-2xl text-white shadow-md shrink-0`}
-                      >
-                        {style.label}
-                      </div>
-                      <span className="font-extrabold text-2xl md:text-3xl text-white tracking-tight">
-                        {optionText}
-                      </span>
-                    </div>
-
-                    {phase === 'REVEALED' && (
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className="font-black text-2xl text-white/90">
-                          {votePercent}%
-                        </span>
-                        {isCorrect && (
-                          <CheckCircle2 className="w-8 h-8 text-emerald-400" />
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  {smoothRemainingSec}s
                 </div>
-              );
-            })}
+              </div>
+            )}
+
+            {/* SUSPENSE STATE: Timer reached 0, waiting for Admin to manually release answer */}
+            {phase === 'PLAYING' && isTimeUp && (
+              <div className="flex items-center gap-4 px-9 py-3.5 rounded-3xl bg-gradient-to-r from-[#ff5500] via-[#e59a24] to-[#ff5500] border-4 border-white text-white shadow-2xl animate-tension-glow">
+                <Lock className="w-8 h-8 stroke-[2.5]" />
+                <span className="font-display text-4xl md:text-5xl font-black uppercase tracking-wider">
+                  ¡TIEMPO CUMPLIDO! ¿QUIÉN ES?
+                </span>
+              </div>
+            )}
+
+            {/* REVEALED STATE: Admin released the answer! Placed cleanly above the photo */}
+            {phase === 'REVEALED' && (
+              <div className="flex items-center gap-4 px-10 py-3.5 rounded-3xl bg-gradient-to-r from-[#008296] via-[#006b7d] to-[#008296] border-4 border-[#e5a93c] text-white shadow-[0_15px_45px_rgba(0,85,102,0.35)] animate-float">
+                <CheckCircle2 className="w-9 h-9 text-[#84bd00] shrink-0 stroke-[2.5]" />
+                <span className="font-display text-4xl md:text-6xl font-black uppercase tracking-wide">
+                  {round.correctName}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* MAIN TELEVISION STAGE: Left = Portrait Frame (100% unobstructed), Right = 4 Broadcast Option Bars */}
+          <div className="w-full flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-12">
+            {/* Portrait Frame */}
+            <div className="relative flex flex-col items-center shrink-0">
+              <div
+                className={`relative w-[360px] h-[360px] md:w-[410px] md:h-[410px] rounded-[2.2rem] overflow-hidden bg-white p-2.5 shadow-[0_20px_55px_rgba(0,85,102,0.28)] border-4 transition-all duration-500 ${
+                  phase === 'REVEALED'
+                    ? 'border-[#84bd00] scale-[1.02]'
+                    : isTimeUp
+                    ? 'border-[#ff5500] animate-tension-glow'
+                    : 'border-[#008296]'
+                }`}
+              >
+                <div className="relative w-full h-full rounded-[1.6rem] overflow-hidden bg-[#003d4a]">
+                  <DistortedCanvas
+                    imageSrc={round.imageData}
+                    progress={smoothProgress}
+                    effectType={round.effectType}
+                    isRevealed={phase === 'REVEALED'}
+                    className="w-full h-full object-cover"
+                  />
+
+                  {/* Sleek bottom progress bar inside frame */}
+                  {phase === 'PLAYING' && !isTimeUp && (
+                    <div className="absolute bottom-0 left-0 right-0 h-3 bg-black/40 backdrop-blur-sm">
+                      <div
+                        className={`h-full transition-none ${
+                          smoothRemainingSec <= 5
+                            ? 'bg-[#ff5500]'
+                            : 'bg-gradient-to-r from-[#00b4cc] via-[#84bd00] to-[#e5a93c]'
+                        }`}
+                        style={{
+                          width: `${Math.max(0, (1 - smoothProgress) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: 4 Television Broadcast Option Cards */}
+            <div className="flex flex-col gap-3.5 w-full max-w-xl">
+              {/* Live vote counter pill */}
+              <div className="flex items-center justify-between px-2">
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#005566] text-white font-extrabold text-xs uppercase tracking-wider shadow">
+                  <Users className="w-4 h-4 text-[#00b4cc]" />
+                  <span>{round.totalVotes || 0} RESPUESTAS EN VIVO</span>
+                </div>
+                {phase === 'PLAYING' && isTimeUp && (
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-[#ff5500] bg-white px-3 py-1 rounded-full shadow">
+                    Votación Cerrada
+                  </span>
+                )}
+              </div>
+
+              {round.options?.map((optionText, idx) => {
+                const style = OPTION_STYLES[idx % 4];
+                const isCorrect =
+                  phase === 'REVEALED' && round.correctOptionIndex === idx;
+                const isWrong =
+                  phase === 'REVEALED' && round.correctOptionIndex !== idx;
+
+                const showVotes =
+                  phase === 'REVEALED' || Boolean(round.showAudienceVotes);
+                const votesForOption = round.voteCounts
+                  ? round.voteCounts[idx] || 0
+                  : 0;
+                const votePercent =
+                  showVotes && round.totalVotes > 0
+                    ? Math.round((votesForOption / round.totalVotes) * 100)
+                    : 0;
+
+                return (
+                  <div
+                    key={idx}
+                    className={`relative overflow-hidden rounded-2xl border-3 p-4 transition-all duration-500 ${
+                      isCorrect
+                        ? 'bg-[#005566] border-4 border-[#84bd00] scale-[1.03] shadow-[0_12px_35px_rgba(132,189,0,0.45)] text-white'
+                        : isWrong
+                        ? 'bg-white/60 border-slate-300/60 opacity-50 scale-[0.98] text-[#005566]'
+                        : `bg-white/95 border-2 ${style.border} shadow-[0_8px_25px_rgba(0,85,102,0.12)] text-[#005566]`
+                    }`}
+                  >
+                    {/* Percentage fill bar when revealed or when Admin toggles Audience Poll */}
+                    {showVotes && (
+                      <div
+                        className={`absolute inset-y-0 left-0 transition-all duration-1000 ${
+                          isCorrect
+                            ? 'bg-[#84bd00]/30'
+                            : `${style.barFill} opacity-15`
+                        }`}
+                        style={{ width: `${votePercent}%` }}
+                      />
+                    )}
+
+                    <div className="relative z-10 flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-4 min-w-0">
+                        <div
+                          className={`w-12 h-12 rounded-xl ${
+                            isCorrect ? 'bg-[#84bd00] text-[#003d4a]' : `${style.badgeBg} text-white`
+                          } flex items-center justify-center font-display font-black text-3xl shadow-md shrink-0`}
+                        >
+                          {style.label}
+                        </div>
+                        <span
+                          className={`font-display font-extrabold text-3xl md:text-4xl uppercase tracking-wide truncate ${
+                            isCorrect ? 'text-white' : 'text-[#005566]'
+                          }`}
+                        >
+                          {optionText}
+                        </span>
+                      </div>
+
+                      {showVotes && (
+                        <div className="flex items-center gap-2.5 shrink-0">
+                          <span
+                            className={`font-display font-black text-3xl ${
+                              isCorrect ? 'text-[#84bd00]' : 'text-[#008296]'
+                            }`}
+                          >
+                            {votePercent}%
+                          </span>
+                          {isCorrect && (
+                            <CheckCircle2 className="w-8 h-8 text-[#84bd00]" />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
 
       {/* ================= PHASE 4: RANKING / PODIUM ================= */}
       {phase === 'RANKING' && (
-        <div className="z-10 flex flex-col items-center justify-center w-full max-w-4xl px-6 py-8">
-          <div className="inline-flex items-center gap-3 px-6 py-2 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 font-black text-xl mb-6">
-            <Trophy className="w-6 h-6 text-amber-400" />
-            <span>RANKING EN VIVO</span>
+        <div className="z-10 flex flex-col items-center justify-center w-full max-w-4xl px-6 mt-2">
+          <div className="inline-flex items-center gap-2.5 px-7 py-2 rounded-full bg-[#008296] text-white font-display font-black text-2xl uppercase tracking-wider shadow-lg mb-5">
+            <Trophy className="w-6 h-6 text-[#e5a93c]" />
+            <span>TABLA DE POSICIONES</span>
           </div>
 
-          <div className="w-full flex flex-col gap-3.5">
+          <div className="w-full flex flex-col gap-3">
             {(!gameState.leaderboard || gameState.leaderboard.length === 0) && (
-              <div className="text-center py-16 bg-slate-900/80 rounded-3xl border border-white/10 text-slate-400 text-2xl font-bold">
+              <div className="text-center py-14 bg-white/90 rounded-3xl border-2 border-[#008296]/25 text-[#005566] text-2xl font-bold shadow">
                 Esperando jugadores...
               </div>
             )}
 
-            {gameState.leaderboard?.slice(0, 8).map((player, idx) => {
+            {gameState.leaderboard?.slice(0, 7).map((player, idx) => {
               const isFirst = idx === 0;
               const isSecond = idx === 1;
               const isThird = idx === 2;
@@ -378,26 +464,26 @@ export default function TvBroadcastPage() {
               return (
                 <div
                   key={player.id}
-                  className={`flex items-center justify-between px-7 py-4 rounded-3xl border-2 transition-all ${
+                  className={`flex items-center justify-between px-6 py-3.5 rounded-2xl border-2 transition-all shadow-md ${
                     isFirst
-                      ? 'bg-gradient-to-r from-amber-500/25 via-slate-900/95 to-slate-900/95 border-amber-400 scale-[1.03] shadow-[0_0_40px_rgba(245,158,11,0.3)]'
+                      ? 'bg-[#005566] border-4 border-[#e5a93c] text-white scale-[1.02] shadow-[0_12px_35px_rgba(0,85,102,0.35)]'
                       : isSecond
-                      ? 'bg-slate-900/90 border-slate-300/50'
+                      ? 'bg-white/95 border-[#008296] text-[#005566]'
                       : isThird
-                      ? 'bg-slate-900/90 border-amber-700/60'
-                      : 'bg-slate-900/75 border-white/10'
+                      ? 'bg-white/95 border-[#84bd00] text-[#005566]'
+                      : 'bg-white/85 border-[#008296]/20 text-[#005566]'
                   }`}
                 >
-                  <div className="flex items-center gap-5">
+                  <div className="flex items-center gap-4">
                     <div
-                      className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-2xl ${
+                      className={`w-11 h-11 rounded-xl flex items-center justify-center font-display font-black text-2xl ${
                         isFirst
-                          ? 'bg-amber-400 text-black'
+                          ? 'bg-[#e5a93c] text-[#003d4a]'
                           : isSecond
-                          ? 'bg-slate-300 text-black'
+                          ? 'bg-[#008296] text-white'
                           : isThird
-                          ? 'bg-amber-700 text-white'
-                          : 'bg-slate-800 text-slate-300'
+                          ? 'bg-[#84bd00] text-white'
+                          : 'bg-[#e6dfd3] text-[#005566]'
                       }`}
                     >
                       {idx + 1}
@@ -405,22 +491,32 @@ export default function TvBroadcastPage() {
 
                     <div className="flex items-center gap-3">
                       <span
-                        className="w-4 h-4 rounded-full shrink-0"
-                        style={{ backgroundColor: player.avatarColor || '#6366f1' }}
+                        className="w-3.5 h-3.5 rounded-full shrink-0"
+                        style={{
+                          backgroundColor: player.avatarColor || '#008296',
+                        }}
                       />
-                      <span className="font-black text-2xl md:text-3xl text-white">
+                      <span className="font-display font-black text-3xl uppercase tracking-wide">
                         {player.name}
                       </span>
                       {player.streak >= 2 && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-orange-500/20 border border-orange-400/40 text-orange-300 text-xs font-extrabold">
-                          <Flame className="w-3.5 h-3.5 fill-orange-400" />x{player.streak}
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#ff5500] text-white text-xs font-extrabold">
+                          <Flame className="w-3.5 h-3.5 fill-white" />x
+                          {player.streak}
                         </span>
                       )}
                     </div>
                   </div>
 
-                  <div className="font-black text-3xl text-amber-400 tracking-tight">
-                    {player.score.toLocaleString()} <span className="text-base text-slate-400 font-bold">PTS</span>
+                  <div
+                    className={`font-display font-black text-3xl tracking-wide ${
+                      isFirst ? 'text-[#e5a93c]' : 'text-[#008296]'
+                    }`}
+                  >
+                    {player.score.toLocaleString()}{' '}
+                    <span className="text-base font-sans font-bold opacity-75">
+                      PTS
+                    </span>
                   </div>
                 </div>
               );

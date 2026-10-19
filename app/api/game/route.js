@@ -10,28 +10,24 @@ export const dynamic = 'force-dynamic';
 
 function buildClientPayload(state, role, playerId) {
   const now = Date.now();
-  let currentPhase = state.phase;
+  // IMPORTANT: We NEVER auto-reveal when the timer finishes!
+  // Only the Admin can manually trigger REVEALED to build maximum TV suspense.
+  const currentPhase = state.phase;
   let roundStatus = { progress: 0, remainingMs: 0, elapsedMs: 0, isFinished: false };
 
   if (state.activeRound) {
     roundStatus = computeRoundProgress(state.activeRound, now);
-    // Auto-reveal when timer finishes during PLAYING
-    if (currentPhase === 'PLAYING' && roundStatus.isFinished) {
-      currentPhase = 'REVEALED';
-    }
   }
 
   const activePhoto = state.activeRound
     ? state.photos.find((p) => p.id === state.activeRound.photoId) || null
     : null;
 
-  // Compute leaderboard sorted by score DESC
   const playersList = Object.values(state.players || {}).sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     return (a.joinedAt || 0) - (b.joinedAt || 0);
   });
 
-  // Compute vote counts for current active round
   const voteCounts = [0, 0, 0, 0];
   let totalVotes = 0;
   if (state.activeRound) {
@@ -47,6 +43,7 @@ function buildClientPayload(state, role, playerId) {
   }
 
   const isRevealed = currentPhase === 'REVEALED';
+  const isTimeUp = currentPhase === 'PLAYING' && roundStatus.isFinished;
 
   const basePayload = {
     version: state.version,
@@ -73,7 +70,7 @@ function buildClientPayload(state, role, playerId) {
           roundId: state.activeRound.roundId,
           photoId: state.activeRound.photoId,
           imageData: activePhoto ? activePhoto.imageData : null,
-          // Only reveal the true name to TV/Player when REVEALED (Admin always sees it)
+          // Never leak correctName or correctOptionIndex to TV or Players until Admin clicks REVEAL_NOW
           correctName: isRevealed || role === 'admin' ? activePhoto?.name : null,
           options: state.activeRound.options,
           correctOptionIndex:
@@ -84,7 +81,13 @@ function buildClientPayload(state, role, playerId) {
           progress: isRevealed ? 1 : roundStatus.progress,
           remainingMs: isRevealed ? 0 : roundStatus.remainingMs,
           elapsedMs: roundStatus.elapsedMs,
-          voteCounts: isRevealed || role === 'admin' ? voteCounts : null,
+          isTimeUp,
+          // Allow showing audience vote distribution on TV if Admin enables "Audience Poll" during Time Up, or when Revealed
+          showAudienceVotes: Boolean(state.activeRound.showAudienceVotes),
+          voteCounts:
+            isRevealed || role === 'admin' || state.activeRound.showAudienceVotes
+              ? voteCounts
+              : null,
           totalVotes,
         }
       : null,
@@ -98,13 +101,33 @@ function buildClientPayload(state, role, playerId) {
   if (playerId && state.players[playerId]) {
     const me = state.players[playerId];
     const myRank = playersList.findIndex((p) => p.id === playerId) + 1;
+    // IMPORTANT: Do NOT reveal `isCorrect` or `pointsEarned` to the mobile player until Admin reveals!
+    const sanitizedLastAnswer = me.lastAnswer
+      ? {
+          roundId: me.lastAnswer.roundId,
+          optionIndex: me.lastAnswer.optionIndex,
+          answeredAt: me.lastAnswer.answeredAt,
+          elapsedMs: me.lastAnswer.elapsedMs,
+          isCorrect: isRevealed ? me.lastAnswer.isCorrect : null,
+          pointsEarned: isRevealed ? me.lastAnswer.pointsEarned : null,
+        }
+      : null;
+
     basePayload.me = {
       ...me,
+      // Hide current round points from player's visible total score until Admin reveals
+      score:
+        !isRevealed &&
+        state.activeRound &&
+        me.lastAnswer?.roundId === state.activeRound.roundId
+          ? me.score - (me.lastAnswer.pointsEarned || 0)
+          : me.score,
+      lastAnswer: sanitizedLastAnswer,
       rank: myRank,
     };
   }
 
-  return { payload: basePayload, autoRevealed: state.phase === 'PLAYING' && currentPhase === 'REVEALED' };
+  return { payload: basePayload };
 }
 
 export async function GET(request) {
@@ -113,16 +136,7 @@ export async function GET(request) {
   const playerId = searchParams.get('playerId') || null;
 
   const state = await getGameState();
-  const { payload, autoRevealed } = buildClientPayload(state, role, playerId);
-
-  if (autoRevealed) {
-    state.phase = 'REVEALED';
-    if (state.activeRound) {
-      const photo = state.photos.find((p) => p.id === state.activeRound.photoId);
-      if (photo) photo.played = true;
-    }
-    await saveGameState(state);
-  }
+  const { payload } = buildClientPayload(state, role, playerId);
 
   return NextResponse.json(payload);
 }
@@ -133,16 +147,6 @@ export async function POST(request) {
     const { action } = body;
     const state = await getGameState();
     const now = Date.now();
-
-    // Auto-transition check first
-    if (state.phase === 'PLAYING' && state.activeRound) {
-      const status = computeRoundProgress(state.activeRound, now);
-      if (status.isFinished) {
-        state.phase = 'REVEALED';
-        const photo = state.photos.find((p) => p.id === state.activeRound.photoId);
-        if (photo) photo.played = true;
-      }
-    }
 
     switch (action) {
       // ================= PLAYER ACTIONS =================
@@ -156,7 +160,7 @@ export async function POST(request) {
         state.players[playerId] = {
           id: playerId,
           name: cleanName,
-          avatarColor: avatarColor || existing?.avatarColor || '#6366f1',
+          avatarColor: avatarColor || existing?.avatarColor || '#008296',
           score: existing ? existing.score : 0,
           streak: existing ? existing.streak : 0,
           joinedAt: existing ? existing.joinedAt : now,
@@ -181,13 +185,10 @@ export async function POST(request) {
 
         const roundStatus = computeRoundProgress(state.activeRound, now);
         if (roundStatus.isFinished) {
-          state.phase = 'REVEALED';
-          await saveGameState(state);
-          return NextResponse.json({ error: 'Tiempo agotado' }, { status: 400 });
+          return NextResponse.json({ error: '¡Se acabó el tiempo para votar!' }, { status: 400 });
         }
 
         const isCorrect = optionIndex === state.activeRound.correctOptionIndex;
-        // Speed bonus: between 500 and 1000 pts based on remaining time ratio + streak bonus
         const speedRatio = Math.max(0, Math.min(1, 1 - roundStatus.progress));
         let pointsEarned = 0;
         if (isCorrect) {
@@ -216,7 +217,7 @@ export async function POST(request) {
 
       // ================= ADMIN ACTIONS =================
       case 'ADD_PHOTOS_BATCH': {
-        const { photos } = body; // Array of { name, imageData, customDistractors }
+        const { photos } = body;
         if (Array.isArray(photos)) {
           for (const item of photos) {
             if (!item.imageData) continue;
@@ -271,7 +272,6 @@ export async function POST(request) {
         const { photoId, durationSeconds, effectType } = body;
         let targetPhoto = state.photos.find((p) => p.id === photoId);
         if (!targetPhoto) {
-          // Pick next unplayed photo or first photo
           targetPhoto = state.photos.find((p) => !p.played) || state.photos[0];
         }
         if (!targetPhoto) {
@@ -294,6 +294,7 @@ export async function POST(request) {
           totalPausedMs: 0,
           effectType: chosenEffect,
           manualProgress: null,
+          showAudienceVotes: false,
         };
         state.phase = 'PLAYING';
         await saveGameState(state);
@@ -314,6 +315,15 @@ export async function POST(request) {
             state.activeRound.isPaused = false;
             state.activeRound.pausedAt = null;
           }
+          await saveGameState(state);
+        }
+        break;
+      }
+
+      case 'TOGGLE_AUDIENCE_VOTES': {
+        // Lets the Admin show % of votes per option on TV BEFORE revealing which one is correct!
+        if (state.activeRound) {
+          state.activeRound.showAudienceVotes = !state.activeRound.showAudienceVotes;
           await saveGameState(state);
         }
         break;
@@ -375,12 +385,6 @@ export async function POST(request) {
         for (const p of state.photos) {
           p.played = false;
         }
-        await saveGameState(state);
-        break;
-      }
-
-      case 'CLEAR_PLAYERS': {
-        state.players = {};
         await saveGameState(state);
         break;
       }

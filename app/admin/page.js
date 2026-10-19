@@ -20,6 +20,8 @@ import {
   Edit3,
   SkipForward,
   Sliders,
+  BarChart3,
+  Lock,
 } from 'lucide-react';
 import DistortedCanvas from '@/components/DistortedCanvas';
 
@@ -32,7 +34,6 @@ const EFFECT_OPTIONS = [
 
 const TIMER_PRESETS = [10, 15, 20, 30, 45];
 
-// Helper to compress and resize uploaded photos on the client before sending
 async function compressImageFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -44,7 +45,6 @@ async function compressImageFile(file) {
         let width = img.width;
         let height = img.height;
 
-        // Square crop center for consistent faces
         const minSide = Math.min(width, height);
         const sx = (width - minSide) / 2;
         const sy = (height - minSide) / 2;
@@ -55,7 +55,6 @@ async function compressImageFile(file) {
         ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, MAX_SIZE, MAX_SIZE);
 
         const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-        // Clean filename without extension
         const rawName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
         const formattedName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
         resolve({
@@ -92,14 +91,15 @@ export default function AdminDashboardPage() {
         if (!active) return;
         setGameState(data);
         if (!selectedPhotoId && data.photos?.length > 0) {
-          const nextUnplayed = data.photos.find((p) => !p.played) || data.photos[0];
+          const nextUnplayed =
+            data.photos.find((p) => !p.played) || data.photos[0];
           setSelectedPhotoId(nextUnplayed.id);
         }
       } catch (e) {}
     }
 
     pollAdmin();
-    const interval = setInterval(pollAdmin, 650);
+    const interval = setInterval(pollAdmin, 600);
     return () => {
       active = false;
       clearInterval(interval);
@@ -127,14 +127,18 @@ export default function AdminDashboardPage() {
     if (!fileList || fileList.length === 0) return;
     setUploading(true);
     try {
-      const filesArray = Array.from(fileList).filter((f) => f.type.startsWith('image/'));
+      const filesArray = Array.from(fileList).filter((f) =>
+        f.type.startsWith('image/')
+      );
       const processed = [];
       for (const file of filesArray) {
         const item = await compressImageFile(file);
         processed.push(item);
       }
       if (processed.length > 0) {
-        const updated = await sendAction('ADD_PHOTOS_BATCH', { photos: processed });
+        const updated = await sendAction('ADD_PHOTOS_BATCH', {
+          photos: processed,
+        });
         if (updated?.photos?.length > 0 && !selectedPhotoId) {
           setSelectedPhotoId(updated.photos[0].id);
         }
@@ -167,7 +171,9 @@ export default function AdminDashboardPage() {
   async function handleStartNextUnplayed() {
     if (!gameState?.photos?.length) return;
     const nextPhoto =
-      gameState.photos.find((p) => !p.played && p.id !== gameState.activeRound?.photoId) ||
+      gameState.photos.find(
+        (p) => !p.played && p.id !== gameState.activeRound?.photoId
+      ) ||
       gameState.photos.find((p) => !p.played) ||
       gameState.photos[0];
     if (nextPhoto) {
@@ -182,7 +188,7 @@ export default function AdminDashboardPage() {
 
   if (!gameState) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center font-bold">
+      <div className="min-h-screen bg-[#002b36] text-white flex items-center justify-center font-bold">
         Cargando Panel de Director...
       </div>
     );
@@ -193,19 +199,20 @@ export default function AdminDashboardPage() {
   const settings = gameState.settings || {};
   const photos = gameState.photos || [];
   const players = gameState.allPlayers || [];
+  const isTimeUp = phase === 'PLAYING' && round?.isTimeUp;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-6">
+    <div className="min-h-screen bg-[#071e26] text-slate-100 p-4 md:p-6">
       {/* Top Broadcast Header */}
-      <header className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4 bg-slate-900 border border-white/10 rounded-3xl px-6 py-4 mb-6 shadow-xl">
+      <header className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4 bg-[#0b2b36] border border-[#008296]/40 rounded-3xl px-6 py-4 mb-6 shadow-xl">
         <div className="flex items-center gap-3">
-          <div className="w-3.5 h-3.5 rounded-full bg-rose-500 animate-ping" />
+          <div className="w-3.5 h-3.5 rounded-full bg-[#ff5500] animate-ping" />
           <div>
-            <h1 className="text-xl font-black tracking-tight text-white">
-              DIRECTOR DE STREAMING — ¿QUIÉN ES?
+            <h1 className="font-display text-2xl font-black tracking-wide text-white uppercase">
+              DIRECTOR DE STREAMING — HOGAR DE CRISTO
             </h1>
-            <p className="text-xs text-slate-400 font-medium">
-              Control en tiempo real de TV, Jugadores y Lote de Fotos
+            <p className="text-xs text-slate-300 font-medium">
+              La respuesta NUNCA se revela sola al terminar el tiempo: tú decides el momento exacto.
             </p>
           </div>
         </div>
@@ -215,7 +222,7 @@ export default function AdminDashboardPage() {
             href="/tv"
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600/20 border border-indigo-400/40 text-indigo-300 hover:bg-indigo-600/30 font-bold text-xs transition"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#008296] hover:bg-[#009fb8] text-white font-bold text-xs transition shadow"
           >
             <Tv className="w-4 h-4" />
             Abrir Pantalla TV (/tv)
@@ -224,7 +231,7 @@ export default function AdminDashboardPage() {
             href="/play"
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-fuchsia-600/20 border border-fuchsia-400/40 text-fuchsia-300 hover:bg-fuchsia-600/30 font-bold text-xs transition"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#e5a93c] hover:bg-[#f0b84d] text-[#003d4a] font-extrabold text-xs transition shadow"
           >
             <Smartphone className="w-4 h-4" />
             Abrir Vista Jugador (/play)
@@ -233,17 +240,25 @@ export default function AdminDashboardPage() {
       </header>
 
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LEFT COLUMN (7 cols): Live Show Controls & Photo Batch Manager */}
+        {/* LEFT COLUMN (8 cols): Live Show Controls & Photo Batch Manager */}
         <div className="lg:col-span-8 space-y-6">
           {/* 1. LIVE SWITCHER DECK */}
-          <section className="bg-slate-900 border border-white/10 rounded-3xl p-6 shadow-xl">
+          <section className="bg-[#0b2b36] border border-[#008296]/40 rounded-3xl p-6 shadow-xl">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-              <h2 className="text-sm font-black uppercase tracking-wider text-slate-400 flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-indigo-400" />
-                Escena en Pantalla TV
+              <h2 className="text-sm font-black uppercase tracking-wider text-[#00b4cc] flex items-center gap-2">
+                <Sliders className="w-4 h-4" />
+                Control de Escena en Vivo (TV y Celulares)
               </h2>
-              <span className="px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-400/40 text-indigo-300 text-xs font-black">
-                ESTADO ACTUAL: {phase}
+              <span
+                className={`px-3.5 py-1 rounded-full text-xs font-black uppercase ${
+                  isTimeUp
+                    ? 'bg-[#ff5500] text-white animate-pulse'
+                    : 'bg-[#008296]/30 border border-[#00b4cc]/40 text-[#00b4cc]'
+                }`}
+              >
+                {isTimeUp
+                  ? 'TIEMPO TERMINADO — ESPERANDO TU REVELACIÓN MANUAL'
+                  : `ESTADO EN AIRE: ${phase}`}
               </span>
             </div>
 
@@ -253,12 +268,12 @@ export default function AdminDashboardPage() {
                 onClick={() => sendAction('SET_PHASE', { phase: 'LOBBY' })}
                 className={`flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl font-black text-sm border transition ${
                   phase === 'LOBBY'
-                    ? 'bg-indigo-600 border-indigo-300 text-white shadow-lg'
-                    : 'bg-slate-800/80 border-white/10 text-slate-300 hover:bg-slate-800'
+                    ? 'bg-[#008296] border-white text-white shadow-lg'
+                    : 'bg-[#071e26] border-white/10 text-slate-300 hover:bg-slate-800'
                 }`}
               >
                 <QrCode className="w-4 h-4" />
-                LOBBY QR
+                1. LOBBY QR
               </button>
 
               <button
@@ -269,43 +284,51 @@ export default function AdminDashboardPage() {
                     effectType: settings.effectType || 'SWIRL_BLUR',
                   })
                 }
-                className="flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl font-black text-sm bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 border border-emerald-300/50 text-white shadow-lg transition"
+                className="flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl font-black text-sm bg-[#84bd00] hover:bg-[#96d600] text-[#002b36] shadow-lg transition"
               >
-                <Play className="w-4 h-4 fill-white" />
-                LANZAR FOTO
+                <Play className="w-4 h-4 fill-current" />
+                2. LANZAR FOTO
               </button>
 
               <button
                 onClick={() => sendAction('REVEAL_NOW')}
                 disabled={!round}
-                className={`flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl font-black text-sm border transition ${
+                className={`flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl font-black text-sm border-2 transition ${
                   phase === 'REVEALED'
-                    ? 'bg-amber-500 border-amber-200 text-black'
-                    : 'bg-slate-800/80 border-white/10 text-amber-300 hover:bg-slate-800 disabled:opacity-40'
+                    ? 'bg-[#e5a93c] border-white text-[#002b36]'
+                    : isTimeUp
+                    ? 'bg-[#ff5500] border-white text-white animate-bounce shadow-[0_0_30px_rgba(255,85,0,0.7)]'
+                    : 'bg-[#071e26] border-[#e5a93c]/50 text-[#e5a93c] hover:bg-[#e5a93c] hover:text-[#002b36] disabled:opacity-40'
                 }`}
               >
                 <Eye className="w-4 h-4" />
-                REVELAR YA
+                3. REVELAR RESPUESTA
               </button>
 
               <button
                 onClick={() => sendAction('SET_PHASE', { phase: 'RANKING' })}
                 className={`flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl font-black text-sm border transition ${
                   phase === 'RANKING'
-                    ? 'bg-amber-500 border-amber-200 text-black shadow-lg'
-                    : 'bg-slate-800/80 border-white/10 text-slate-300 hover:bg-slate-800'
+                    ? 'bg-[#e5a93c] border-white text-[#002b36] shadow-lg'
+                    : 'bg-[#071e26] border-white/10 text-slate-300 hover:bg-slate-800'
                 }`}
               >
-                <Trophy className="w-4 h-4 text-amber-400" />
-                VER RANKING
+                <Trophy className="w-4 h-4 text-[#e5a93c]" />
+                4. VER RANKING
               </button>
             </div>
 
-            {/* Active Round Monitor Bar */}
+            {/* Active Round Monitor & Tension Controls */}
             {round && (
-              <div className="bg-slate-950 border border-white/10 rounded-2xl p-4 mb-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div
+                className={`rounded-2xl p-4 mb-5 border-2 transition flex flex-col md:flex-row items-center justify-between gap-4 ${
+                  isTimeUp
+                    ? 'bg-[#ff5500]/15 border-[#ff5500]'
+                    : 'bg-[#071e26] border-[#008296]/40'
+                }`}
+              >
                 <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-xl overflow-hidden border border-white/15 shrink-0">
+                  <div className="w-16 h-16 rounded-xl overflow-hidden border-2 border-[#008296] shrink-0 bg-black">
                     <DistortedCanvas
                       imageSrc={round.imageData}
                       progress={round.progress}
@@ -315,37 +338,71 @@ export default function AdminDashboardPage() {
                     />
                   </div>
                   <div>
-                    <div className="text-xs font-bold text-indigo-400 uppercase">
-                      En el Aire: {round.correctName}
+                    <div className="text-xs font-extrabold text-[#e5a93c] uppercase">
+                      Personaje Secreto: {round.correctName}
                     </div>
-                    <div className="text-lg font-black text-white">
-                      {phase === 'PLAYING'
-                        ? `Tiempo restante: ${Math.ceil((round.remainingMs || 0) / 1000)}s`
-                        : '¡Imagen Revelada!'}
+                    <div className="text-lg font-black text-white flex items-center gap-2">
+                      {phase === 'PLAYING' && !isTimeUp && (
+                        <span>
+                          Corriendo tiempo:{' '}
+                          {Math.ceil((round.remainingMs || 0) / 1000)}s
+                        </span>
+                      )}
+                      {phase === 'PLAYING' && isTimeUp && (
+                        <span className="text-[#ff5500] flex items-center gap-1.5">
+                          <Lock className="w-4 h-4" /> ¡Tiempo agotado! En
+                          tensión esperando que presiones &quot;3. REVELAR
+                          RESPUESTA&quot;
+                        </span>
+                      )}
+                      {phase === 'REVEALED' && (
+                        <span className="text-[#84bd00]">
+                          ¡Respuesta liberada en TV y Celulares!
+                        </span>
+                      )}
                     </div>
-                    <div className="text-xs text-slate-400 font-semibold">
-                      Votos recibidos: {round.totalVotes || 0} de {players.length} jugadores
+                    <div className="text-xs text-slate-300 font-semibold">
+                      Votos recibidos: {round.totalVotes || 0} de{' '}
+                      {players.length} jugadores
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Show Audience Poll % on TV BEFORE revealing who is right */}
                   {phase === 'PLAYING' && (
                     <button
+                      onClick={() => sendAction('TOGGLE_AUDIENCE_VOTES')}
+                      className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl font-black text-xs border transition ${
+                        round.showAudienceVotes
+                          ? 'bg-[#00b4cc] text-[#002b36] border-white'
+                          : 'bg-[#0b2b36] text-[#00b4cc] border-[#00b4cc]/40 hover:bg-[#00b4cc]/20'
+                      }`}
+                      title="Muestra en la TV qué porcentaje votó por A, B, C o D sin revelar aún cuál es la correcta"
+                    >
+                      <BarChart3 className="w-4 h-4" />
+                      {round.showAudienceVotes
+                        ? 'OCULTAR % ENCUESTA'
+                        : 'MOSTRAR % DEL PÚBLICO'}
+                    </button>
+                  )}
+
+                  {phase === 'PLAYING' && !isTimeUp && (
+                    <button
                       onClick={() => sendAction('TOGGLE_PAUSE')}
-                      className={`inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl font-black text-xs border ${
+                      className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl font-black text-xs border ${
                         round.isPaused
-                          ? 'bg-amber-500 text-black border-amber-300'
-                          : 'bg-slate-800 text-white border-white/15'
+                          ? 'bg-[#e5a93c] text-[#002b36] border-white'
+                          : 'bg-[#0b2b36] text-white border-white/20'
                       }`}
                     >
                       {round.isPaused ? (
                         <>
-                          <Play className="w-3.5 h-3.5 fill-black" /> REANUDAR TIMER
+                          <Play className="w-3.5 h-3.5 fill-current" /> REANUDAR
                         </>
                       ) : (
                         <>
-                          <Pause className="w-3.5 h-3.5" /> CONGELAR EFECTO
+                          <Pause className="w-3.5 h-3.5" /> CONGELAR
                         </>
                       )}
                     </button>
@@ -353,7 +410,7 @@ export default function AdminDashboardPage() {
 
                   <button
                     onClick={handleStartNextUnplayed}
-                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow"
+                    className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#008296] hover:bg-[#009fb8] text-white font-black text-xs shadow"
                   >
                     <SkipForward className="w-3.5 h-3.5" />
                     SIGUIENTE FOTO
@@ -362,11 +419,10 @@ export default function AdminDashboardPage() {
               </div>
             )}
 
-            {/* Quick Round Settings (Effect Type, Timer Duration, TV Overlay Options) */}
+            {/* Quick Round Settings */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 border-t border-white/10">
-              {/* Effect selector */}
               <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1.5">
+                <label className="block text-[11px] font-bold uppercase text-slate-300 mb-1.5">
                   Efecto de Distorsión
                 </label>
                 <select
@@ -376,7 +432,7 @@ export default function AdminDashboardPage() {
                       settings: { effectType: e.target.value },
                     })
                   }
-                  className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-white/15 text-sm font-bold text-white"
+                  className="w-full px-3 py-2.5 rounded-xl bg-[#071e26] border border-white/15 text-sm font-bold text-white"
                 >
                   {EFFECT_OPTIONS.map((ef) => (
                     <option key={ef.id} value={ef.id}>
@@ -386,9 +442,8 @@ export default function AdminDashboardPage() {
                 </select>
               </div>
 
-              {/* Timer presets */}
               <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1.5">
+                <label className="block text-[11px] font-bold uppercase text-slate-300 mb-1.5">
                   Duración del Timer
                 </label>
                 <div className="flex items-center gap-1.5">
@@ -402,8 +457,8 @@ export default function AdminDashboardPage() {
                       }
                       className={`flex-1 py-2 rounded-xl font-black text-xs border transition ${
                         settings.timerDuration === sec
-                          ? 'bg-indigo-600 border-indigo-400 text-white'
-                          : 'bg-slate-950 border-white/10 text-slate-400 hover:text-white'
+                          ? 'bg-[#008296] border-white text-white'
+                          : 'bg-[#071e26] border-white/10 text-slate-400 hover:text-white'
                       }`}
                     >
                       {sec}s
@@ -412,9 +467,8 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
 
-              {/* Studio / OBS Chroma & Audio toggles */}
               <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1.5">
+                <label className="block text-[11px] font-bold uppercase text-slate-300 mb-1.5">
                   Opciones de TV / OBS
                 </label>
                 <div className="flex items-center gap-2">
@@ -426,8 +480,8 @@ export default function AdminDashboardPage() {
                     }
                     className={`flex-1 py-2 px-2.5 rounded-xl font-bold text-xs border flex items-center justify-center gap-1 ${
                       settings.showQrOnTv
-                        ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300'
-                        : 'bg-slate-950 border-white/10 text-slate-500'
+                        ? 'bg-[#84bd00]/20 border-[#84bd00] text-[#84bd00]'
+                        : 'bg-[#071e26] border-white/10 text-slate-500'
                     }`}
                   >
                     <QrCode className="w-3.5 h-3.5" />
@@ -442,8 +496,8 @@ export default function AdminDashboardPage() {
                     }
                     className={`py-2 px-3 rounded-xl font-bold text-xs border flex items-center justify-center ${
                       settings.soundEnabled
-                        ? 'bg-indigo-500/20 border-indigo-400/40 text-indigo-300'
-                        : 'bg-slate-950 border-white/10 text-slate-500'
+                        ? 'bg-[#008296]/30 border-[#00b4cc] text-[#00b4cc]'
+                        : 'bg-[#071e26] border-white/10 text-slate-500'
                     }`}
                     title="Sonidos en TV"
                   >
@@ -461,10 +515,10 @@ export default function AdminDashboardPage() {
                         settings: { chromaMode: e.target.value },
                       })
                     }
-                    className="py-2 px-2.5 rounded-xl bg-slate-950 border border-white/15 text-xs font-bold text-white"
+                    className="py-2 px-2.5 rounded-xl bg-[#071e26] border border-white/15 text-xs font-bold text-white"
                     title="Fondo de TV"
                   >
-                    <option value="DARK">Fondo Oscuro</option>
+                    <option value="DARK">Key Visual Oficial</option>
                     <option value="TRANSPARENT">OBS Transparente</option>
                     <option value="GREEN">Chroma Verde</option>
                   </select>
@@ -474,15 +528,15 @@ export default function AdminDashboardPage() {
           </section>
 
           {/* 2. BATCH PHOTO UPLOADER & THUMBNAIL QUEUE */}
-          <section className="bg-slate-900 border border-white/10 rounded-3xl p-6 shadow-xl">
+          <section className="bg-[#0b2b36] border border-[#008296]/40 rounded-3xl p-6 shadow-xl">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div>
                 <h2 className="text-base font-black text-white flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-fuchsia-400" />
+                  <Sparkles className="w-4 h-4 text-[#e5a93c]" />
                   Lote de Fotos Cargadas ({photos.length})
                 </h2>
-                <p className="text-xs text-slate-400">
-                  Sube varias fotos a la vez. El nombre de cada archivo será la respuesta correcta y los distractores se crean solos.
+                <p className="text-xs text-slate-300">
+                  Arrastra todas las fotos del show. El nombre de cada archivo será la respuesta correcta.
                 </p>
               </div>
 
@@ -515,8 +569,8 @@ export default function AdminDashboardPage() {
               onClick={() => fileInputRef.current?.click()}
               className={`cursor-pointer border-2 border-dashed rounded-2xl p-6 text-center transition mb-6 ${
                 isDragging
-                  ? 'border-indigo-400 bg-indigo-500/15'
-                  : 'border-white/15 hover:border-indigo-400/60 bg-slate-950/60'
+                  ? 'border-[#e5a93c] bg-[#e5a93c]/10'
+                  : 'border-[#008296]/50 hover:border-[#00b4cc] bg-[#071e26]/70'
               }`}
             >
               <input
@@ -527,14 +581,14 @@ export default function AdminDashboardPage() {
                 className="hidden"
                 onChange={(e) => handleFilesUpload(e.target.files)}
               />
-              <Upload className="w-8 h-8 text-indigo-400 mx-auto mb-2" />
+              <Upload className="w-8 h-8 text-[#00b4cc] mx-auto mb-2" />
               <div className="font-extrabold text-sm text-white">
                 {uploading
-                  ? 'Procesando y optimizando lote de fotos...'
-                  : 'Arrastra aquí tus fotos en lote o haz clic para seleccionar'}
+                  ? 'Procesando lote de imágenes...'
+                  : 'Arrastra aquí las fotos en lote o haz clic para subirlas'}
               </div>
               <div className="text-xs text-slate-400 mt-1">
-                Tip: Si el archivo se llama <code className="text-indigo-300">Shakira.jpg</code>, la respuesta será &quot;Shakira&quot; automáticamente.
+                Las miniaturas quedan listas abajo para que elijas cuál lanzar al aire.
               </div>
             </div>
 
@@ -549,15 +603,14 @@ export default function AdminDashboardPage() {
                   <div
                     key={photo.id}
                     onClick={() => setSelectedPhotoId(photo.id)}
-                    className={`group relative rounded-2xl overflow-hidden border-2 transition cursor-pointer flex flex-col justify-between bg-slate-950 ${
+                    className={`group relative rounded-2xl overflow-hidden border-2 transition cursor-pointer flex flex-col justify-between bg-[#071e26] ${
                       isOnAir
-                        ? 'border-emerald-400 shadow-[0_0_25px_rgba(16,185,129,0.25)]'
+                        ? 'border-[#84bd00] shadow-[0_0_25px_rgba(132,189,0,0.3)]'
                         : isSelected
-                        ? 'border-indigo-500'
+                        ? 'border-[#e5a93c]'
                         : 'border-white/10 hover:border-white/25'
                     }`}
                   >
-                    {/* Top Image Preview */}
                     <div className="relative h-40 w-full bg-slate-900 overflow-hidden">
                       <img
                         src={photo.imageData}
@@ -565,16 +618,16 @@ export default function AdminDashboardPage() {
                         className="w-full h-full object-cover"
                       />
                       <div className="absolute top-2 left-2 flex items-center gap-1.5">
-                        <span className="px-2.5 py-0.5 rounded-full bg-black/75 backdrop-blur-md text-white font-black text-xs">
+                        <span className="px-2.5 py-0.5 rounded-full bg-black/75 text-white font-black text-xs">
                           #{index + 1}
                         </span>
                         {isOnAir && (
-                          <span className="px-2.5 py-0.5 rounded-full bg-emerald-500 text-black font-black text-xs">
+                          <span className="px-2.5 py-0.5 rounded-full bg-[#84bd00] text-[#002b36] font-black text-xs">
                             EN AIRE
                           </span>
                         )}
                         {!isOnAir && photo.played && (
-                          <span className="px-2.5 py-0.5 rounded-full bg-slate-800/90 text-slate-300 font-bold text-xs">
+                          <span className="px-2.5 py-0.5 rounded-full bg-black/80 text-slate-300 font-bold text-xs">
                             JUGADA
                           </span>
                         )}
@@ -593,7 +646,6 @@ export default function AdminDashboardPage() {
                       </button>
                     </div>
 
-                    {/* Photo Details / Quick Editor */}
                     <div className="p-3.5 flex-1 flex flex-col justify-between">
                       {isEditing ? (
                         <div
@@ -605,19 +657,19 @@ export default function AdminDashboardPage() {
                             value={editName}
                             onChange={(e) => setEditName(e.target.value)}
                             placeholder="Nombre correcto"
-                            className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-indigo-400 text-white text-xs font-bold"
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-[#0b2b36] border border-[#00b4cc] text-white text-xs font-bold"
                           />
                           <input
                             type="text"
                             value={editDistractors}
                             onChange={(e) => setEditDistractors(e.target.value)}
                             placeholder="Opcional: 3 distractores separados por coma"
-                            className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-white/15 text-slate-300 text-[11px]"
+                            className="w-full px-2.5 py-1.5 rounded-lg bg-[#0b2b36] border border-white/15 text-slate-300 text-[11px]"
                           />
                           <button
                             type="button"
                             onClick={() => savePhotoEdit(photo.id)}
-                            className="w-full py-1.5 rounded-lg bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-1"
+                            className="w-full py-1.5 rounded-lg bg-[#84bd00] text-[#002b36] font-black text-xs flex items-center justify-center gap-1"
                           >
                             <Check className="w-3.5 h-3.5" /> Guardar
                           </button>
@@ -659,10 +711,10 @@ export default function AdminDashboardPage() {
                                 effectType: settings.effectType || 'SWIRL_BLUR',
                               });
                             }}
-                            className="mt-3 w-full py-2 rounded-xl bg-indigo-600/25 hover:bg-indigo-600 text-indigo-200 hover:text-white font-black text-xs transition flex items-center justify-center gap-1.5"
+                            className="mt-3 w-full py-2 rounded-xl bg-[#008296]/30 hover:bg-[#008296] text-[#00b4cc] hover:text-white font-black text-xs transition flex items-center justify-center gap-1.5"
                           >
                             <Play className="w-3.5 h-3.5 fill-current" />
-                            LANZAR AHORA
+                            LANZAR ESTA FOTO
                           </button>
                         </>
                       )}
@@ -676,33 +728,31 @@ export default function AdminDashboardPage() {
 
         {/* RIGHT COLUMN (4 cols): Live Leaderboard & Player Moderation */}
         <div className="lg:col-span-4 space-y-6">
-          <section className="bg-slate-900 border border-white/10 rounded-3xl p-6 shadow-xl">
+          <section className="bg-[#0b2b36] border border-[#008296]/40 rounded-3xl p-6 shadow-xl">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-indigo-400" />
+                <Users className="w-5 h-5 text-[#00b4cc]" />
                 <h2 className="font-black text-base text-white">
                   Jugadores ({players.length})
                 </h2>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    if (confirm('¿Reiniciar todos los puntajes a 0?')) {
-                      sendAction('RESET_SCORES');
-                    }
-                  }}
-                  className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center gap-1"
-                  title="Reiniciar puntos a 0"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" /> Reset Pts
-                </button>
-              </div>
+              <button
+                onClick={() => {
+                  if (confirm('¿Reiniciar todos los puntajes a 0?')) {
+                    sendAction('RESET_SCORES');
+                  }
+                }}
+                className="px-2.5 py-1.5 rounded-xl bg-[#071e26] hover:bg-slate-800 text-slate-300 font-bold text-xs flex items-center gap-1 border border-white/10"
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> Reset Pts
+              </button>
             </div>
 
             {players.length === 0 ? (
-              <div className="text-center py-12 px-4 rounded-2xl bg-slate-950/60 border border-white/5 text-slate-400 text-sm">
-                Nadie se ha unido aún. Muestra el Lobby en <code className="text-indigo-300">/tv</code> o abre <code className="text-fuchsia-300">/play</code> para probar.
+              <div className="text-center py-12 px-4 rounded-2xl bg-[#071e26]/60 border border-white/5 text-slate-400 text-sm">
+                Esperando que los espectadores escaneen el código QR en{' '}
+                <code className="text-[#00b4cc]">/tv</code>.
               </div>
             ) : (
               <div className="space-y-2.5 max-h-[540px] overflow-y-auto pr-1">
@@ -712,15 +762,17 @@ export default function AdminDashboardPage() {
                   return (
                     <div
                       key={p.id}
-                      className="flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-slate-950 border border-white/10"
+                      className="flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-[#071e26] border border-white/10"
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="w-6 h-6 rounded-lg bg-slate-800 text-slate-300 font-black text-xs flex items-center justify-center shrink-0">
+                        <span className="w-6 h-6 rounded-lg bg-[#0b2b36] text-[#e5a93c] font-black text-xs flex items-center justify-center shrink-0">
                           {idx + 1}
                         </span>
                         <span
                           className="w-3 h-3 rounded-full shrink-0"
-                          style={{ backgroundColor: p.avatarColor || '#6366f1' }}
+                          style={{
+                            backgroundColor: p.avatarColor || '#008296',
+                          }}
                         />
                         <div className="truncate">
                           <div className="font-bold text-sm text-white truncate">
@@ -729,14 +781,18 @@ export default function AdminDashboardPage() {
                           <div className="text-[11px] text-slate-400 font-semibold">
                             {p.score.toLocaleString()} pts
                             {answeredThisRound && (
-                              <span className="ml-2 text-emerald-400">● Respondió</span>
+                              <span className="ml-2 text-[#84bd00]">
+                                ● Votó ({round.options?.[p.lastAnswer.optionIndex]})
+                              </span>
                             )}
                           </div>
                         </div>
                       </div>
 
                       <button
-                        onClick={() => sendAction('KICK_PLAYER', { playerId: p.id })}
+                        onClick={() =>
+                          sendAction('KICK_PLAYER', { playerId: p.id })
+                        }
                         className="p-1.5 text-slate-500 hover:text-rose-400 transition"
                         title="Expulsar jugador"
                       >

@@ -4,8 +4,10 @@ import React, { useEffect, useRef } from 'react';
 
 /**
  * Renders an image into an HTML5 Canvas with progressive distortion.
- * progress: 0 (maximum distortion at start of timer) -> 1 (100% clear at end/reveal)
- * effectType: 'SWIRL_BLUR' | 'PIXELATE' | 'BLUR' | 'ZOOM'
+ * IMPORTANT FOR TV SUSPENSE:
+ * When the timer runs out (progress = 1) BEFORE the admin clicks "REVEAL",
+ * the image stays at a suspense floor (e.g. 22% residual distortion) so the audience
+ * and hosts can debate! Only when `isRevealed === true` does distortion drop to 0%.
  */
 export default function DistortedCanvas({
   imageSrc,
@@ -18,7 +20,6 @@ export default function DistortedCanvas({
   const imgRef = useRef(null);
   const loadedSrcRef = useRef(null);
 
-  // Load image into offscreen HTMLImageElement
   useEffect(() => {
     if (!imageSrc) return;
     if (loadedSrcRef.current === imageSrc && imgRef.current) {
@@ -35,7 +36,6 @@ export default function DistortedCanvas({
     img.src = imageSrc;
   }, [imageSrc]);
 
-  // Redraw whenever progress, effectType, or isRevealed changes
   useEffect(() => {
     drawFrame();
   }, [progress, effectType, isRevealed]);
@@ -51,7 +51,6 @@ export default function DistortedCanvas({
 
     ctx.clearRect(0, 0, width, height);
 
-    // Calculate aspect-fill (cover) coordinates for square canvas
     const imgRatio = img.width / img.height;
     const canvasRatio = width / height;
     let sx = 0, sy = 0, sWidth = img.width, sHeight = img.height;
@@ -64,9 +63,13 @@ export default function DistortedCanvas({
       sy = (img.height - sHeight) / 2;
     }
 
-    const effectiveProgress = isRevealed ? 1 : Math.max(0, Math.min(1, progress));
-    // Non-linear curve so the image stays challenging for the first 70% of the timer, then clarifies
-    const distortionFactor = isRevealed ? 0 : Math.pow(1 - effectiveProgress, 1.35);
+    const clampedProgress = Math.max(0, Math.min(1, progress));
+    // Suspense floor: even when timer reaches 0 (clampedProgress === 1),
+    // keep 24% distortion until the Admin manually clicks "Revelar" (isRevealed === true)
+    const suspenseFloor = 0.24;
+    const distortionFactor = isRevealed
+      ? 0
+      : suspenseFloor + (1 - suspenseFloor) * Math.pow(1 - clampedProgress, 1.25);
 
     if (distortionFactor <= 0.005) {
       ctx.filter = 'none';
@@ -75,7 +78,6 @@ export default function DistortedCanvas({
     }
 
     if (effectType === 'PIXELATE') {
-      // Pixel size goes from 48px down to 1px
       const sampleScale = Math.max(0.025, 1 - distortionFactor * 0.96);
       const smallW = Math.max(6, Math.floor(width * sampleScale));
       const smallH = Math.max(6, Math.floor(height * sampleScale));
@@ -93,8 +95,7 @@ export default function DistortedCanvas({
     } else if (effectType === 'BLUR') {
       const blurPx = (distortionFactor * 38).toFixed(1);
       ctx.save();
-      ctx.filter = `blur(${blurPx}px) saturate(${1 + distortionFactor * 0.5})`;
-      // Draw slightly oversized to avoid dark blur edges
+      ctx.filter = `blur(${blurPx}px) saturate(${1 + distortionFactor * 0.4})`;
       const bleed = 40;
       ctx.drawImage(
         img,
@@ -109,8 +110,7 @@ export default function DistortedCanvas({
       );
       ctx.restore();
     } else if (effectType === 'ZOOM') {
-      // Extreme center zoom that gradually zooms out
-      const maxZoom = 6.5;
+      const maxZoom = 6.2;
       const currentZoom = 1 + distortionFactor * (maxZoom - 1);
       const zoomedW = sWidth / currentZoom;
       const zoomedH = sHeight / currentZoom;
@@ -123,8 +123,7 @@ export default function DistortedCanvas({
       ctx.drawImage(img, zSx, zSy, zoomedW, zoomedH, 0, 0, width, height);
       ctx.restore();
     } else {
-      // SWIRL_BLUR (Deformación + Difuminado)
-      // Render to a smaller buffer for ultra-fast 60fps pixel swirl manipulation
+      // SWIRL_BLUR
       const bufSize = 240;
       const offCanvas = document.createElement('canvas');
       offCanvas.width = bufSize;
@@ -143,7 +142,7 @@ export default function DistortedCanvas({
       const cx = bufSize / 2;
       const cy = bufSize / 2;
       const maxRadius = bufSize * 0.48;
-      const maxAngle = distortionFactor * 5.2; // radians of twist
+      const maxAngle = distortionFactor * 5.2;
 
       for (let y = 0; y < bufSize; y++) {
         for (let x = 0; x < bufSize; x++) {
