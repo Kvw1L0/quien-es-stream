@@ -9,7 +9,8 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-function buildClientPayload(state, role, playerId) {
+function buildClientPayload(state, role, playerId, options = {}) {
+  const { knownPhotoId = null, includePhotosData = true } = options;
   const now = Date.now();
   let currentPhase = state.phase;
   let roundStatus = { progress: 0, remainingMs: 0, elapsedMs: 0, isFinished: false };
@@ -132,7 +133,10 @@ function buildClientPayload(state, role, playerId) {
       ? {
           roundId: state.activeRound.roundId,
           photoId: state.activeRound.photoId,
-          imageData: activePhoto ? activePhoto.imageData : null,
+          imageData:
+            activePhoto && knownPhotoId !== state.activeRound.photoId
+              ? activePhoto.imageData
+              : undefined,
           correctName: isRevealed || role === 'admin' ? activePhoto?.name : null,
           options: state.activeRound.options,
           correctOptionIndex:
@@ -163,7 +167,9 @@ function buildClientPayload(state, role, playerId) {
   };
 
   if (role === 'admin') {
-    basePayload.photos = state.photos;
+    basePayload.photos = includePhotosData
+      ? state.photos
+      : state.photos.map(({ imageData, ...meta }) => meta);
     basePayload.allPlayers = playersList;
   }
 
@@ -196,9 +202,14 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const role = searchParams.get('role') || 'player';
   const playerId = searchParams.get('playerId') || null;
+  const knownPhotoId = searchParams.get('knownPhotoId') || null;
+  const includePhotosData = searchParams.get('includePhotosData') !== '0';
 
   const state = await getGameState();
-  const { payload, drumrollAutoCompleted } = buildClientPayload(state, role, playerId);
+  const { payload, drumrollAutoCompleted } = buildClientPayload(state, role, playerId, {
+    knownPhotoId,
+    includePhotosData,
+  });
 
   if (drumrollAutoCompleted) {
     state.phase = 'REVEALED';
@@ -607,7 +618,15 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Acción desconocida' }, { status: 400 });
     }
 
-    const { payload } = buildClientPayload(state, body.role || 'admin', body.playerId);
+    const photoMutatingActions = new Set([
+      'ADD_PHOTOS_BATCH',
+      'DELETE_PHOTO',
+      'CLEAR_ALL_PHOTOS',
+    ]);
+    const { payload } = buildClientPayload(state, body.role || 'admin', body.playerId, {
+      knownPhotoId: body.knownPhotoId || null,
+      includePhotosData: photoMutatingActions.has(action),
+    });
     return NextResponse.json(payload);
   } catch (err) {
     console.error('Error in POST /api/game:', err);

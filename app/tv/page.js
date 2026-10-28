@@ -64,6 +64,7 @@ export default function TvBroadcastPage() {
   const prevSecRef = useRef(null);
   const buzzerPlayedForRoundRef = useRef(null);
   const drumrollPlayedForRoundRef = useRef(null);
+  const photoCacheRef = useRef({ photoId: null, imageData: null });
 
   const syncSnapshotRef = useRef({
     progress: 0,
@@ -86,10 +87,30 @@ export default function TvBroadcastPage() {
     let active = true;
     async function fetchState() {
       try {
-        const res = await fetch('/api/game?role=tv', { cache: 'no-store' });
+        const knownId = photoCacheRef.current.imageData
+          ? photoCacheRef.current.photoId || ''
+          : '';
+        const res = await fetch(
+          `/api/game?role=tv&knownPhotoId=${encodeURIComponent(knownId)}`,
+          { cache: 'no-store' }
+        );
         if (!res.ok) return;
         const data = await res.json();
         if (!active) return;
+
+        if (data.activeRound) {
+          if (data.activeRound.imageData) {
+            photoCacheRef.current = {
+              photoId: data.activeRound.photoId,
+              imageData: data.activeRound.imageData,
+            };
+          } else if (
+            photoCacheRef.current.photoId === data.activeRound.photoId &&
+            photoCacheRef.current.imageData
+          ) {
+            data.activeRound.imageData = photoCacheRef.current.imageData;
+          }
+        }
 
         setGameState(data);
 
@@ -115,7 +136,7 @@ export default function TvBroadcastPage() {
     }
 
     fetchState();
-    const interval = setInterval(fetchState, 400);
+    const interval = setInterval(fetchState, 600);
     return () => {
       active = false;
       clearInterval(interval);

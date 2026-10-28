@@ -70,6 +70,7 @@ export default function MobilePlayerPage() {
   const [drumrollSec, setDrumrollSec] = useState(0);
 
   const lastTapTimeRef = useRef(0);
+  const photoCacheRef = useRef({ photoId: null, imageData: null });
 
   const syncSnapshotRef = useRef({
     progress: 0,
@@ -116,13 +117,30 @@ export default function MobilePlayerPage() {
 
     async function poll() {
       try {
+        const knownId = photoCacheRef.current.imageData
+          ? photoCacheRef.current.photoId || ''
+          : '';
         const res = await fetch(
-          `/api/game?role=player&playerId=${encodeURIComponent(playerId)}`,
+          `/api/game?role=player&playerId=${encodeURIComponent(playerId)}&knownPhotoId=${encodeURIComponent(knownId)}`,
           { cache: 'no-store' }
         );
         if (!res.ok) return;
         const data = await res.json();
         if (!active) return;
+
+        if (data.activeRound) {
+          if (data.activeRound.imageData) {
+            photoCacheRef.current = {
+              photoId: data.activeRound.photoId,
+              imageData: data.activeRound.imageData,
+            };
+          } else if (
+            photoCacheRef.current.photoId === data.activeRound.photoId &&
+            photoCacheRef.current.imageData
+          ) {
+            data.activeRound.imageData = photoCacheRef.current.imageData;
+          }
+        }
 
         setGameState(data);
         if (data.me) {
@@ -147,7 +165,7 @@ export default function MobilePlayerPage() {
     }
 
     poll();
-    const interval = setInterval(poll, 500);
+    const interval = setInterval(poll, 800);
     return () => {
       active = false;
       clearInterval(interval);
@@ -217,6 +235,9 @@ export default function MobilePlayerPage() {
           action: 'JOIN_PLAYER',
           role: 'player',
           playerId,
+          knownPhotoId: photoCacheRef.current.imageData
+            ? photoCacheRef.current.photoId
+            : null,
           name: nickname.trim(),
           emoji: selectedEmoji,
           avatarColor: selectedColor,
@@ -224,6 +245,19 @@ export default function MobilePlayerPage() {
       });
       const data = await res.json();
       if (res.ok) {
+        if (data.activeRound) {
+          if (data.activeRound.imageData) {
+            photoCacheRef.current = {
+              photoId: data.activeRound.photoId,
+              imageData: data.activeRound.imageData,
+            };
+          } else if (
+            photoCacheRef.current.photoId === data.activeRound.photoId &&
+            photoCacheRef.current.imageData
+          ) {
+            data.activeRound.imageData = photoCacheRef.current.imageData;
+          }
+        }
         setGameState(data);
         setIsJoined(true);
       }
@@ -268,11 +302,21 @@ export default function MobilePlayerPage() {
           action: 'SUBMIT_ANSWER',
           role: 'player',
           playerId,
+          knownPhotoId: photoCacheRef.current.imageData
+            ? photoCacheRef.current.photoId
+            : null,
           optionIndex,
         }),
       });
       if (res.ok) {
         const data = await res.json();
+        if (
+          data.activeRound &&
+          !data.activeRound.imageData &&
+          photoCacheRef.current.photoId === data.activeRound.photoId
+        ) {
+          data.activeRound.imageData = photoCacheRef.current.imageData;
+        }
         setGameState(data);
       }
     } catch (e) {}
@@ -303,11 +347,21 @@ export default function MobilePlayerPage() {
           action: 'SEND_REACTION',
           role: 'player',
           playerId,
+          knownPhotoId: photoCacheRef.current.imageData
+            ? photoCacheRef.current.photoId
+            : null,
           emoji,
         }),
       });
       if (res.ok) {
         const data = await res.json();
+        if (
+          data.activeRound &&
+          !data.activeRound.imageData &&
+          photoCacheRef.current.photoId === data.activeRound.photoId
+        ) {
+          data.activeRound.imageData = photoCacheRef.current.imageData;
+        }
         setGameState(data);
       }
     } catch (e) {}

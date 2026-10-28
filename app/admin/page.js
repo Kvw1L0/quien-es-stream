@@ -94,15 +94,70 @@ export default function AdminDashboardPage() {
   const [scrubberVal, setScrubberVal] = useState(null);
 
   const fileInputRef = useRef(null);
+  const photoDataMapRef = useRef(new Map());
+  const activeRoundPhotoRef = useRef({ photoId: null, imageData: null });
+
+  function hydrateAdminData(data) {
+    if (!data) return data;
+    if (Array.isArray(data.photos)) {
+      if (data.photos.length === 0) {
+        photoDataMapRef.current.clear();
+      }
+      const needsRefetch = data.photos.some(
+        (p) => !p.imageData && !photoDataMapRef.current.has(p.id)
+      );
+      if (needsRefetch) {
+        photoDataMapRef.current.clear();
+      }
+      data.photos = data.photos.map((p) => {
+        if (p.imageData) {
+          photoDataMapRef.current.set(p.id, p.imageData);
+          return p;
+        }
+        return {
+          ...p,
+          imageData: photoDataMapRef.current.get(p.id) || null,
+        };
+      });
+    }
+    if (data.activeRound) {
+      if (data.activeRound.imageData) {
+        activeRoundPhotoRef.current = {
+          photoId: data.activeRound.photoId,
+          imageData: data.activeRound.imageData,
+        };
+      } else {
+        const cached =
+          photoDataMapRef.current.get(data.activeRound.photoId) ||
+          (activeRoundPhotoRef.current.photoId === data.activeRound.photoId
+            ? activeRoundPhotoRef.current.imageData
+            : null);
+        if (cached) {
+          data.activeRound.imageData = cached;
+        }
+      }
+    }
+    return data;
+  }
 
   useEffect(() => {
     let active = true;
     async function pollAdmin() {
       try {
-        const res = await fetch('/api/game?role=admin', { cache: 'no-store' });
+        const hasAllPhotosCached =
+          photoDataMapRef.current.size > 0 &&
+          Array.from(photoDataMapRef.current.values()).every(Boolean);
+        const knownId = activeRoundPhotoRef.current.imageData
+          ? activeRoundPhotoRef.current.photoId || ''
+          : '';
+        const res = await fetch(
+          `/api/game?role=admin&knownPhotoId=${encodeURIComponent(knownId)}&includePhotosData=${hasAllPhotosCached ? '0' : '1'}`,
+          { cache: 'no-store' }
+        );
         if (!res.ok) return;
-        const data = await res.json();
+        const rawData = await res.json();
         if (!active) return;
+        const data = hydrateAdminData(rawData);
         setGameState(data);
         if (!selectedPhotoId && data.photos?.length > 0) {
           const nextUnplayed =
@@ -113,7 +168,7 @@ export default function AdminDashboardPage() {
     }
 
     pollAdmin();
-    const interval = setInterval(pollAdmin, 500);
+    const interval = setInterval(pollAdmin, 750);
     return () => {
       active = false;
       clearInterval(interval);
@@ -128,13 +183,17 @@ export default function AdminDashboardPage() {
 
   async function sendAction(action, payload = {}) {
     try {
+      const knownPhotoId = activeRoundPhotoRef.current.imageData
+        ? activeRoundPhotoRef.current.photoId
+        : null;
       const res = await fetch('/api/game', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, role: 'admin', ...payload }),
+        body: JSON.stringify({ action, role: 'admin', knownPhotoId, ...payload }),
       });
       if (res.ok) {
-        const data = await res.json();
+        const rawData = await res.json();
+        const data = hydrateAdminData(rawData);
         setGameState(data);
         return data;
       }
