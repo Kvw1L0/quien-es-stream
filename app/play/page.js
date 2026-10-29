@@ -165,7 +165,7 @@ export default function MobilePlayerPage() {
     }
 
     poll();
-    const interval = setInterval(poll, 800);
+    const interval = setInterval(() => { if (!document.hidden) poll(); }, 1000);
     return () => {
       active = false;
       clearInterval(interval);

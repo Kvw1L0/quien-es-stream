@@ -136,7 +136,7 @@ export default function TvBroadcastPage() {
     }
 
     fetchState();
-    const interval = setInterval(fetchState, 600);
+    const interval = setInterval(() => { if (!document.hidden) fetchState(); }, 800);
     return () => {
       active = false;
       clearInterval(interval);

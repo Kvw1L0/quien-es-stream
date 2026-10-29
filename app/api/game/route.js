@@ -135,7 +135,7 @@ function buildClientPayload(state, role, playerId, options = {}) {
           photoId: state.activeRound.photoId,
           imageData:
             activePhoto && knownPhotoId !== state.activeRound.photoId
-              ? activePhoto.imageData
+              ? `/api/photo?id=${encodeURIComponent(state.activeRound.photoId)}`
               : undefined,
           correctName: isRevealed || role === 'admin' ? activePhoto?.name : null,
           options: state.activeRound.options,
@@ -167,9 +167,7 @@ function buildClientPayload(state, role, playerId, options = {}) {
   };
 
   if (role === 'admin') {
-    basePayload.photos = includePhotosData
-      ? state.photos
-      : state.photos.map(({ imageData, ...meta }) => meta);
+    basePayload.photos = state.photos.map(({ imageData, ...meta }) => ({ ...meta, imageData: `/api/photo?id=${encodeURIComponent(meta.id)}` }));
     basePayload.allPlayers = playersList;
   }
 

@@ -168,7 +168,7 @@ export default function AdminDashboardPage() {
     }
 
     pollAdmin();
-    const interval = setInterval(pollAdmin, 750);
+    const interval = setInterval(() => { if (!document.hidden) pollAdmin(); }, 1000);
     return () => {
       active = false;
       clearInterval(interval);
